@@ -81,7 +81,7 @@ export default function Home() {
                       d="M5 13l4 4L19 7"
                     />
                   </svg>
-                  <span>
+                  <span className="text-gray-700">
                     Prioritized assignments based on due dates and importance
                   </span>
                 </li>
@@ -99,7 +99,9 @@ export default function Home() {
                       d="M5 13l4 4L19 7"
                     />
                   </svg>
-                  <span>AI-generated summaries of assignment descriptions</span>
+                  <span className="text-gray-700">
+                    AI-generated summaries of assignment descriptions
+                  </span>
                 </li>
                 <li className="flex items-start">
                   <svg
@@ -115,7 +117,9 @@ export default function Home() {
                       d="M5 13l4 4L19 7"
                     />
                   </svg>
-                  <span>Visual analytics to track your progress</span>
+                  <span className="text-gray-700">
+                    Visual analytics to track your progress
+                  </span>
                 </li>
               </ul>
             </div>
