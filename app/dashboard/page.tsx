@@ -51,7 +51,11 @@ export default function Dashboard() {
     // Fetch courses
     const fetchCourses = async () => {
       try {
-        const response = await fetch(`/api/py/courses?token=${token}`);
+        const response = await fetch(`/api/py/courses`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
         if (!response.ok) {
           throw new Error("Failed to fetch courses");
         }
@@ -66,7 +70,11 @@ export default function Dashboard() {
     // Fetch assignments
     const fetchAssignments = async () => {
       try {
-        const response = await fetch(`/api/py/assignments?token=${token}`);
+        const response = await fetch(`/api/py/assignments`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
         if (!response.ok) {
           throw new Error("Failed to fetch assignments");
         }
@@ -158,7 +166,11 @@ export default function Dashboard() {
         <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredAssignments.length > 0 ? (
             filteredAssignments.map((assignment) => (
-              <AssignmentCard key={assignment.id} assignment={assignment} />
+              <AssignmentCard
+                key={assignment.id}
+                assignment={assignment}
+                token={token}
+              />
             ))
           ) : (
             <div className="col-span-full text-center py-12">
