@@ -1,87 +1,104 @@
-<p align="center">
-  <a href="https://nextjs-fastapi-starter.vercel.app/">
-    <img src="https://assets.vercel.com/image/upload/v1588805858/repositories/vercel/logo.png" height="96">
-    <h3 align="center">Next.js FastAPI Starter</h3>
-  </a>
-</p>
+# Canvas Assistant
 
-<p align="center">Simple Next.j 14 boilerplate that uses <a href="https://fastapi.tiangolo.com/">FastAPI</a> as the API backend.</p>
+A comprehensive tool for Canvas LMS users to manage assignments, prioritize tasks, and get content summaries.
 
-<br/>
+## Features
 
-## Introduction
+- Canvas OAuth authentication
+- Assignment dashboard with priority indicators
+- Content summarization using Gemini AI
+- Analytics visualization
+- Responsive design for all devices
 
-This is a hybrid Next.js 14 + Python template. One great use case of this is to write Next.js apps that use Python AI libraries on the backend, while still having the benefits of Next.js Route Handlers and Server Side Rendering.
+## Tech Stack
 
-## How It Works
+- **Frontend**: Next.js 14, Tailwind CSS
+- **Backend**: FastAPI
+- **AI**: Google Gemini API
+- **Authentication**: Canvas OAuth
 
-The Python/FastAPI server is mapped into to Next.js app under `/api/`.
+## Setup
 
-This is implemented using [`next.config.js` rewrites](https://github.com/digitros/nextjs-fastapi/blob/main/next.config.js) to map any request to `/api/py/:path*` to the FastAPI API, which is hosted in the `/api` folder.
+### Prerequisites
 
-Also, the app/api routes are available on the same domain, so you can use NextJs Route Handlers and make requests to `/api/...`.
+- Node.js 18+ and npm
+- Python 3.9+
+- Canvas LMS developer credentials
+- Google Gemini API key
 
-On localhost, the rewrite will be made to the `127.0.0.1:8000` port, which is where the FastAPI server is running.
+### Backend Setup
 
-In production, the FastAPI server is hosted as [Python serverless functions](https://vercel.com/docs/concepts/functions/serverless-functions/runtimes/python) on Vercel.
+1. Navigate to the API directory:
 
-## Demo
+   ```
+   cd api
+   ```
 
-https://nextjs-fastapi-starter.vercel.app/
+2. Create a virtual environment:
 
-## Deploy Your Own
+   ```
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```
 
-You can clone & deploy it to Vercel with one click:
+3. Install dependencies:
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fdigitros%2Fnextjs-fastapi%2Ftree%2Fmain)
+   ```
+   pip install -r requirements.txt
+   ```
 
-## Developing Locally
+4. Create a `.env` file based on `.env.example` and add your credentials:
 
-You can clone & create this repo with the following command
+   ```
+   cp .env.example .env
+   ```
 
-```bash
-npx create-next-app nextjs-fastapi --example "https://github.com/digitros/nextjs-fastapi"
-```
+5. Start the FastAPI server:
+   ```
+   uvicorn index:app --reload
+   ```
 
-## Getting Started
+### Frontend Setup
 
-First, create and activate a virtual environment:
+1. Navigate to the app directory:
 
-```bash
-python3 -m venv venv
-source venv/bin/activate
-```
+   ```
+   cd app
+   ```
 
-Then, install the dependencies:
+2. Install dependencies:
 
-```bash
-npm install
-# or
-yarn
-# or
-pnpm install
-```
+   ```
+   npm install
+   ```
 
-Then, run the development server(python dependencies will be installed automatically here):
+3. Create a `.env.local` file with your Canvas OAuth credentials:
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-```
+   ```
+   NEXT_PUBLIC_CANVAS_CLIENT_ID=your_canvas_client_id
+   NEXT_PUBLIC_CANVAS_REDIRECT_URI=http://localhost:3000/auth/callback
+   ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+4. Start the Next.js development server:
 
-The FastApi server will be running on [http://127.0.0.1:8000](http://127.0.0.1:8000) – feel free to change the port in `package.json` (you'll also need to update it in `next.config.js`).
+   ```
+   npm run dev
+   ```
 
-## Learn More
+5. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-To learn more about Next.js, take a look at the following resources:
+## Usage
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-- [FastAPI Documentation](https://fastapi.tiangolo.com/) - learn about FastAPI features and API.
+1. Log in with your Canvas account
+2. View your prioritized assignments on the dashboard
+3. Click on assignments to see AI-generated summaries
+4. Use filters to sort assignments by course, due date, or priority
+5. View analytics for your courses and assignments
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js/) - your feedback and contributions are welcome!
+## API Documentation
+
+The FastAPI backend provides comprehensive API documentation at `/api/py/docs`.
+
+## License
+
+MIT

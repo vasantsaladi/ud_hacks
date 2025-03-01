@@ -1,9 +1,9 @@
 {
-  "name": "nextjs-fastapi",
-  "version": "0.2.0",
+  "name": "canvas-assistant",
+  "version": "0.1.0",
   "private": true,
   "scripts": {
-    "fastapi-dev": "pip3 install -r requirements.txt && python3 -m uvicorn api.index:app --reload",
+    "fastapi-dev": "pip install -r api/requirements.txt && python -m uvicorn api.index:app --reload",
     "next-dev": "next dev",
     "dev": "concurrently \"npm run next-dev\" \"npm run fastapi-dev\"",
     "build": "next build",
@@ -11,18 +11,21 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@types/node": "22.5.5",
-    "@types/react": "18.3.8",
-    "@types/react-dom": "18.3.0",
-    "autoprefixer": "10.4.20",
-    "concurrently": "^9.0.1",
-    "eslint": "8.41.0",
-    "eslint-config-next": "13.4.4",
-    "next": "^14.2.13",
-    "postcss": "^8.4.47",
-    "react": "18.3.1",
-    "react-dom": "18.3.1",
-    "tailwindcss": "3.4.12",
-    "typescript": "5.6.2"
+    "date-fns": "^2.30.0",
+    "next": "14.0.3",
+    "react": "^18",
+    "react-dom": "^18"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "autoprefixer": "^10.0.1",
+    "concurrently": "^8.2.2",
+    "eslint": "^8",
+    "eslint-config-next": "14.0.3",
+    "postcss": "^8",
+    "tailwindcss": "^3.3.0",
+    "typescript": "^5"
   }
 }
