@@ -122,6 +122,10 @@ async def summarize_content(content: str) -> str:
         return "Summary unavailable"
 
 # Endpoints
+@app.get("/api/py/health")
+def health_check():
+    return {"status": "ok", "message": "API is running"}
+
 @app.get("/api/py/helloFastApi")
 def hello_fast_api():
     return {"message": "Hello from FastAPI"}
