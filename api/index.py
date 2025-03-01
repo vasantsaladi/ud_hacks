@@ -8,12 +8,22 @@ from datetime import datetime
 import google.generativeai as genai
 from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from both root and api directories
+load_dotenv()  # Load from root .env file
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))  # Load from api/.env file
+
+# Debug: Print API key (partially masked)
+api_key = os.getenv("GEMINI_API_KEY", "")
+if api_key:
+    masked_key = api_key[:4] + "*" * (len(api_key) - 8) + api_key[-4:] if len(api_key) > 8 else "****"
+    print(f"Gemini API Key found: {masked_key}")
+else:
+    print("Gemini API Key not found!")
 
 # Initialize Gemini API
 try:
-    genai.configure(api_key=os.getenv("GEMINI_API_KEY", ""))
+    genai.configure(api_key=api_key)
+    print("Gemini API configured successfully")
 except Exception as e:
     print(f"Error configuring Gemini API: {e}")
 
@@ -58,6 +68,19 @@ class Course(BaseModel):
     code: str
     start_at: Optional[datetime] = None
     end_at: Optional[datetime] = None
+
+class GeminiRequest(BaseModel):
+    prompt: str
+    max_tokens: Optional[int] = 1024
+    temperature: Optional[float] = 0.7
+
+class GeminiResponse(BaseModel):
+    text: str
+
+class SummarizeRequest(BaseModel):
+    content: str
+    max_tokens: Optional[int] = 1024
+    temperature: Optional[float] = 0.7
 
 # Helper functions
 async def get_canvas_client():
@@ -105,7 +128,11 @@ async def summarize_content(content: str) -> str:
         return content
     
     try:
-        model = genai.GenerativeModel('gemini-pro')
+        # Use the same model as in gemini_endpoint
+        model_name = "models/gemini-1.5-flash"
+        print(f"Attempting to use model for summarization: {model_name}")
+        
+        model = genai.GenerativeModel(model_name)
         prompt = f"Summarize the following assignment description concisely, highlighting key requirements and deadlines:\n\n{content}"
         response = model.generate_content(prompt)
         return response.text
@@ -295,3 +322,89 @@ async def get_course_analytics(course_id: int):
             
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching analytics: {str(e)}")
+
+@app.post("/api/py/gemini", response_model=GeminiResponse)
+async def gemini_endpoint(request: GeminiRequest):
+    """
+    Generate text using Google's Gemini AI model.
+    
+    - **prompt**: The text prompt to send to Gemini
+    - **max_tokens**: Maximum number of tokens to generate (default: 1024)
+    - **temperature**: Controls randomness (0.0-1.0, default: 0.7)
+    
+    Requires GEMINI_API_KEY environment variable to be set.
+    """
+    try:
+        # Try with a model that's available in the list
+        model_name = "models/gemini-1.5-flash"  # Using one of the available models from the list
+        print(f"Attempting to use model: {model_name}")
+        
+        model = genai.GenerativeModel(model_name)
+        
+        # Generate content
+        response = model.generate_content(
+            request.prompt,
+            generation_config={
+                "max_output_tokens": request.max_tokens,
+                "temperature": request.temperature
+            }
+        )
+        
+        return GeminiResponse(text=response.text)
+    except Exception as e:
+        print(f"Gemini API error: {e}")
+        raise HTTPException(status_code=500, detail=f"Error generating text: {str(e)}")
+
+@app.post("/api/py/summarize", response_model=GeminiResponse)
+async def summarize_content(request: SummarizeRequest):
+    """
+    Summarize content using Google's Gemini AI model.
+    
+    - **content**: The text content to summarize
+    - **max_tokens**: Maximum number of tokens to generate (default: 1024)
+    - **temperature**: Controls randomness (0.0-1.0, default: 0.7)
+    
+    Requires GEMINI_API_KEY environment variable to be set.
+    """
+    try:
+        # Use the same model as in gemini_endpoint
+        model_name = "models/gemini-1.5-flash"
+        print(f"Attempting to use model for summarization: {model_name}")
+        
+        model = genai.GenerativeModel(model_name)
+        
+        # Create a prompt for summarization
+        prompt = f"Please summarize the following content concisely:\n\n{request.content}"
+        
+        # Generate summary
+        response = model.generate_content(
+            prompt,
+            generation_config={
+                "max_output_tokens": request.max_tokens,
+                "temperature": request.temperature
+            }
+        )
+        
+        return GeminiResponse(text=response.text)
+    except Exception as e:
+        print(f"Gemini API error in summarization: {e}")
+        raise HTTPException(status_code=500, detail=f"Error generating summary: {str(e)}")
+
+@app.get("/api/py/models")
+async def list_models():
+    """
+    List available Gemini AI models.
+    
+    Requires GEMINI_API_KEY environment variable to be set.
+    """
+    try:
+        # List available models
+        models = genai.list_models()
+        model_names = [model.name for model in models]
+        print("Available models:")
+        for name in model_names:
+            print(f"- {name}")
+        return {"models": model_names}
+    except Exception as e:
+        print(f"Error listing models: {e}")
+        raise HTTPException(status_code=500, detail=f"Error listing models: {str(e)}")
