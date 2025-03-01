@@ -45,6 +45,21 @@ export default function Home() {
           </p>
         </div>
 
+        <div className="flex gap-4 mb-8">
+          <button
+            onClick={handleCanvasLogin}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+          >
+            Connect with Canvas
+          </button>
+          <a
+            href="/gemini"
+            className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+          >
+            Try Gemini AI
+          </a>
+        </div>
+
         <div className="bg-white rounded-xl shadow-xl overflow-hidden w-full max-w-3xl mb-12">
           <div className="grid md:grid-cols-2">
             <div className="p-8 flex flex-col justify-center">
@@ -220,6 +235,40 @@ export default function Home() {
               insights.
             </p>
           </div>
+        </div>
+
+        <div className="mb-32 grid text-center lg:mb-0 lg:grid-cols-4 lg:text-left">
+          <a
+            href="/gemini"
+            className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
+          >
+            <h2 className={`mb-3 text-2xl font-semibold`}>
+              Gemini AI{" "}
+              <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
+                -&gt;
+              </span>
+            </h2>
+            <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
+              Try out the Gemini AI integration.
+            </p>
+          </a>
+
+          <a
+            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
+            className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <h2 className={`mb-3 text-2xl font-semibold`}>
+              Next.js Docs{" "}
+              <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
+                -&gt;
+              </span>
+            </h2>
+            <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
+              Find in-depth information about Next.js features and API.
+            </p>
+          </a>
         </div>
       </div>
     </main>
