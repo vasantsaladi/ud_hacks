@@ -148,9 +148,10 @@ async def get_assignments(
         async with await get_canvas_client() as client:
             # Get courses if course_id not specified
             if not course_id:
-                courses_response = await client.get(f"{CANVAS_API_BASE_URL}/courses?enrollment_state=active")
+                # Changed to fetch only favorite courses instead of all active courses
+                courses_response = await client.get(f"{CANVAS_API_BASE_URL}/users/self/favorites/courses")
                 if courses_response.status_code != 200:
-                    raise HTTPException(status_code=courses_response.status_code, detail="Failed to fetch courses")
+                    raise HTTPException(status_code=courses_response.status_code, detail="Failed to fetch favorite courses")
                 courses = courses_response.json()
             else:
                 courses = [{"id": course_id}]
