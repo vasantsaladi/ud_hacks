@@ -239,11 +239,17 @@ async def get_assignments(
                     # Calculate priority (simplified)
                     priority = calculate_basic_priority(assignment)
                     
-                    # Only summarize if explicitly requested
+                    # Only summarize if explicitly requested and there's a description
                     description = assignment.get("description", "")
                     summary = ""
-                    if not skip_summarization and description:
-                        summary = fallback_summarize(description)  # Use fast fallback by default
+                    if not skip_summarization:
+                        if description:
+                            summary = await summarize_content(description)
+                        elif "attendance" in assignment["name"].lower():
+                            # Handle attendance assignments without descriptions
+                            summary = f"Attendance for class on {assignment['name'].split('Attendance')[0].strip()}"
+                        else:
+                            summary = "No description provided"
                     
                     # Determine bucket based on due date
                     bucket = "upcoming"
@@ -342,9 +348,41 @@ def calculate_basic_priority(assignment: Dict[str, Any]) -> int:
     
     return priority
 
+async def summarize_content(content: str) -> str:
+    """Summarize content using Gemini API or fallback to simple summarization"""
+    if not content or len(content) < 50:  # Only summarize if there's enough content
+        return content
+    
+    try:
+        model = genai.GenerativeModel("models/gemini-1.5-flash")
+        prompt = f"""Summarize this assignment description in 2-3 clear, concise sentences. Focus on key requirements and deadlines:
+
+{content}
+
+If this is an attendance assignment, simply state: "Attendance for class on [date]".
+"""
+        response = model.generate_content(prompt)
+        
+        if hasattr(response, 'text'):
+            return response.text.strip()
+        else:
+            return fallback_summarize(content)
+    except Exception as e:
+        print(f"Error in summarization: {e}")
+        return fallback_summarize(content)
+
 def fallback_summarize(content: str) -> str:
     """Simple fallback summarization when API is unavailable"""
-    # Take the first 200 characters as a simple summary
+    # For attendance assignments
+    if "attendance" in content.lower():
+        # Try to extract date from the assignment name or content
+        import re
+        date_match = re.search(r'\d{1,2}/\d{1,2}', content)
+        if date_match:
+            return f"Attendance for class on {date_match.group(0)}"
+        return "Attendance assignment"
+    
+    # For other assignments
     if len(content) <= 200:
         return content
     
@@ -352,37 +390,9 @@ def fallback_summarize(content: str) -> str:
     cutoff = min(200, len(content))
     period_pos = content.find('.', 100, cutoff)
     if period_pos > 0:
-        return content[:period_pos+1] + " [...]"
+        return content[:period_pos+1].strip()
     else:
-        return content[:cutoff] + " [...]"
-
-async def summarize_content(content: str) -> str:
-    """Summarize content using Gemini API or fallback to simple summarization"""
-    if not content or len(content) < 100:
-        return content
-    
-    # Enable Gemini summarization by default
-    try:
-        # Use the same model as in gemini_endpoint
-        model_name = "models/gemini-1.5-flash"
-        print(f"Attempting to use model for summarization: {model_name}")
-        
-        model = genai.GenerativeModel(model_name)
-        prompt = f"Summarize the following assignment description concisely, highlighting key requirements and deadlines:\n\n{content}"
-        response = model.generate_content(prompt)
-        
-        # Check response format and extract text
-        if hasattr(response, 'text'):
-            return response.text
-        elif hasattr(response, 'parts') and response.parts:
-            return ''.join(part.text for part in response.parts if hasattr(part, 'text'))
-        else:
-            print(f"Unexpected response type: {type(response)}")
-            # Return a fallback summary if we can't parse the response
-            return fallback_summarize(content)
-    except Exception as e:
-        print(f"Gemini API error in summarization: {e}")
-        return fallback_summarize(content)  # Always use fallback on any error
+        return content[:cutoff].strip() + "..."
 
 @app.get("/api/py/assignment/{assignment_id}/summary")
 async def get_assignment_summary(assignment_id: int, course_id: int):
