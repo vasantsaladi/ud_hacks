@@ -70,7 +70,9 @@ const StudyTimeVisualization: React.FC<StudyTimeVisualizationProps> = ({
   }, [courseId, token]);
 
   if (loading) {
-    return <LoadingSpinner message="Analyzing study patterns..." />;
+    return (
+      <LoadingSpinner message="Analyzing study patterns..." size="large" />
+    );
   }
 
   if (error) {

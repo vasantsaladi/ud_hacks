@@ -1,5 +1,15 @@
 import React, { useEffect, useRef } from "react";
 
+/**
+ * SmalltalkVisualization Component
+ *
+ * This component implements Smalltalk programming paradigm principles:
+ * 1. Object-Oriented: Encapsulates all visualization logic in a single component
+ * 2. Message Passing: Receives data through props (similar to Smalltalk messages)
+ * 3. Encapsulation: Internal implementation details are hidden from consumers
+ * 4. Polymorphism: Can render different data sets through the same interface
+ */
+
 interface SmalltalkVisualizationProps {
   data: {
     title: string;
@@ -10,13 +20,17 @@ interface SmalltalkVisualizationProps {
   width?: number;
 }
 
+// In Smalltalk tradition, this component is a self-contained object
+// that responds to messages (props) and manages its own state
 const SmalltalkVisualization: React.FC<SmalltalkVisualizationProps> = ({
   data,
   height = 300,
   width = 600,
 }) => {
+  // Canvas reference acts as the component's internal state
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
+  // Similar to Smalltalk's method dispatch, useEffect responds to changes in props
   useEffect(() => {
     if (!canvasRef.current || !data.values.length) return;
 
@@ -65,7 +79,7 @@ const SmalltalkVisualization: React.FC<SmalltalkVisualizationProps> = ({
       "#8b5cf6", // purple
     ];
 
-    // Draw bars
+    // Draw bars - each bar is like a Smalltalk object that knows how to draw itself
     data.values.forEach((value, index) => {
       const barHeight = value * scale;
       const x = marginLeft + (barWidth + barSpacing) * index;
@@ -109,6 +123,7 @@ const SmalltalkVisualization: React.FC<SmalltalkVisualizationProps> = ({
     ctx.stroke();
   }, [data, height, width]);
 
+  // Return the visual representation - in Smalltalk, this would be the "view" of the object
   return (
     <div className="smalltalk-visualization">
       <canvas

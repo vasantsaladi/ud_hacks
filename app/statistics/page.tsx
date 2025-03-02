@@ -118,7 +118,7 @@ export default function Statistics() {
   }, [selectedCourse, token]);
 
   if (loading) {
-    return <LoadingSpinner message="Loading statistics data..." />;
+    return <LoadingSpinner message="Loading statistics data..." size="large" />;
   }
 
   if (error) {
@@ -232,6 +232,12 @@ export default function Statistics() {
                 <h3 className="text-md font-medium text-gray-700 mb-4">
                   Grade Distribution
                 </h3>
+                {/* 
+                  Using AdvancedSmalltalkVisualization demonstrates Smalltalk's inheritance principles:
+                  - More specialized object with enhanced capabilities
+                  - Polymorphic interface (can render different chart types)
+                  - Dynamic dispatch based on chartType parameter
+                */}
                 <AdvancedSmalltalkVisualization
                   title="Course Grade Breakdown"
                   chartType="pie"
@@ -306,13 +312,18 @@ export default function Statistics() {
                 <h2 className="text-xl font-semibold mb-4">
                   Assignments by Type
                 </h2>
+                {/* 
+                  Using SmalltalkVisualization component following Smalltalk programming paradigm:
+                  - Sending a message (props) to the object
+                  - The object (component) encapsulates all rendering logic
+                  - Data is transformed into the format expected by the component
+                */}
                 <SmalltalkVisualization
-                  data={Object.entries(statistics.assignments_by_type).map(
-                    ([key, value]) => ({
-                      label: key,
-                      value,
-                    })
-                  )}
+                  data={{
+                    title: "Assignments by Type",
+                    values: Object.values(statistics.assignments_by_type),
+                    labels: Object.keys(statistics.assignments_by_type),
+                  }}
                   height={300}
                 />
               </div>
@@ -321,13 +332,16 @@ export default function Statistics() {
                 <h2 className="text-xl font-semibold mb-4">
                   Time Distribution
                 </h2>
+                {/* 
+                  Another instance of SmalltalkVisualization - demonstrating reusability
+                  of Smalltalk objects and polymorphism (same component, different data)
+                */}
                 <SmalltalkVisualization
-                  data={Object.entries(statistics.time_distribution).map(
-                    ([key, value]) => ({
-                      label: key,
-                      value,
-                    })
-                  )}
+                  data={{
+                    title: "Time Distribution",
+                    values: Object.values(statistics.time_distribution),
+                    labels: Object.keys(statistics.time_distribution),
+                  }}
                   height={300}
                 />
               </div>

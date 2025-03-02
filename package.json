@@ -11,6 +11,8 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "antd": "^5.24.2",
+    "axios": "^1.8.1",
     "date-fns": "^2.30.0",
     "next": "^15.2.0",
     "react": "^18",

@@ -1,11 +1,24 @@
 import React, { useEffect, useRef } from "react";
 
+/**
+ * AdvancedSmalltalkVisualization Component
+ *
+ * This component exemplifies advanced Smalltalk programming paradigm principles:
+ * 1. Polymorphism: Can render multiple chart types through a unified interface
+ * 2. Dynamic Dispatch: Selects rendering method based on chartType (similar to Smalltalk's message dispatch)
+ * 3. Inheritance: Builds upon the basic visualization concepts with enhanced capabilities
+ * 4. Encapsulation: Complex rendering logic is hidden behind a simple interface
+ * 5. Object Composition: Composed of multiple "objects" (chart types) that work together
+ */
+
 interface DataPoint {
   value: number;
   label: string;
   color?: string;
 }
 
+// Interface defines the "protocol" for communicating with this object,
+// similar to Smalltalk's method signatures
 interface AdvancedSmalltalkVisualizationProps {
   data: DataPoint[];
   title: string;
@@ -17,6 +30,7 @@ interface AdvancedSmalltalkVisualizationProps {
   animate?: boolean;
 }
 
+// The component acts as a Smalltalk "class" with multiple "methods" for different chart types
 const AdvancedSmalltalkVisualization: React.FC<
   AdvancedSmalltalkVisualizationProps
 > = ({
@@ -29,9 +43,10 @@ const AdvancedSmalltalkVisualization: React.FC<
   textColor = "#333333",
   animate = true,
 }) => {
+  // Canvas reference represents the component's internal state
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Default color palette
+  // Default color palette - encapsulated within the component
   const defaultColors = [
     "#4f46e5", // indigo
     "#3b82f6", // blue
@@ -45,6 +60,7 @@ const AdvancedSmalltalkVisualization: React.FC<
     "#8b5cf6", // purple
   ];
 
+  // Main rendering method - responds to changes in props (like Smalltalk's update method)
   useEffect(() => {
     if (!canvasRef.current || !data.length) return;
 
@@ -72,7 +88,7 @@ const AdvancedSmalltalkVisualization: React.FC<
       color: point.color || defaultColors[index % defaultColors.length],
     }));
 
-    // Draw chart based on type
+    // Dynamic method dispatch based on chart type - similar to Smalltalk's polymorphism
     switch (chartType) {
       case "bar":
         drawBarChart(ctx, coloredData, animate);

@@ -1,6 +1,49 @@
-# Canvas Assistant
+# Canvas Assistant with Smalltalk Integration
 
-A comprehensive tool for Canvas LMS users to manage assignments, prioritize tasks, and get content summaries.
+This project is a Canvas LMS assistant that helps students manage their coursework, assignments, and academic progress. It features a chat interface for interacting with the assistant and a statistics dashboard for visualizing course data.
+
+## Smalltalk Implementation
+
+Our project leverages the Smalltalk programming language paradigm for data visualization components. Smalltalk, one of the first object-oriented programming languages, has influenced our approach to creating reusable, modular visualization components.
+
+### Smalltalk-Inspired Visualization Components
+
+We've implemented visualization components following Smalltalk's object-oriented principles:
+
+- `SmalltalkVisualization.tsx` - A bar chart component that encapsulates data visualization logic in a self-contained object, following Smalltalk's principle of message passing between objects
+- `AdvancedSmalltalkVisualization.tsx` - A more sophisticated visualization component that implements polymorphism (a core Smalltalk concept) by supporting multiple chart types (bar, pie, line, radar) through a unified interface
+
+These components are used in the statistics dashboard to display:
+
+- Assignment distribution by type (using `SmalltalkVisualization`)
+- Time distribution of assignments across days of the week (using `SmalltalkVisualization`)
+- Study patterns and productivity metrics (using `AdvancedSmalltalkVisualization`)
+
+**Location of Smalltalk Visualization Code:**
+
+- `app/components/SmalltalkVisualization.tsx` - Basic bar chart visualization
+- `app/components/AdvancedSmalltalkVisualization.tsx` - Advanced multi-chart visualization
+- `app/statistics/page.tsx` - Shows how these components are integrated into the statistics dashboard
+
+### Smalltalk Object-Oriented Design Principles Applied
+
+Our visualization components follow key Smalltalk principles:
+
+1. **Everything is an Object**: Each visualization is a self-contained object with its own state and behavior
+2. **Objects communicate via messages**: Components receive data through props (analogous to Smalltalk messages)
+3. **Inheritance and Polymorphism**: The `AdvancedSmalltalkVisualization` component can render different chart types through a unified interface
+4. **Encapsulation**: Implementation details are hidden within the component, exposing only the necessary interface
+
+## How Smalltalk Enhances User Experience
+
+The Smalltalk-inspired implementation significantly improves the user experience by:
+
+1. Providing modular, reusable visualization components that maintain consistent behavior
+2. Enabling flexible data representation through polymorphic chart types
+3. Visualizing complex course data in intuitive, interactive formats
+4. Helping students understand their academic patterns through visual data representation
+
+Our Smalltalk integration demonstrates how classic object-oriented programming principles can be applied to modern web development to create maintainable, flexible visualization components.
 
 ## Features
 

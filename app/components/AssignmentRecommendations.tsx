@@ -228,7 +228,10 @@ const AssignmentRecommendations: React.FC<AssignmentRecommendationsProps> = ({
     return (
       <div className="p-6 bg-white rounded-lg shadow-sm">
         <div className="flex justify-center items-center py-12">
-          <LoadingSpinner message="Generating smart recommendations..." />
+          <LoadingSpinner
+            message="Generating smart recommendations..."
+            size="medium"
+          />
         </div>
       </div>
     );
