@@ -7,6 +7,8 @@ import os
 from datetime import datetime
 import google.generativeai as genai
 from dotenv import load_dotenv
+import asyncio
+from canvasapi import Canvas
 
 # Load environment variables from both root and api directories
 load_dotenv()  # Load from root .env file
@@ -90,6 +92,15 @@ class SummarizeRequest(BaseModel):
     max_tokens: Optional[int] = 1024
     temperature: Optional[float] = 0.7
 
+class UserProfile(BaseModel):
+    id: int
+    name: str
+    email: Optional[str] = None
+    avatar_url: Optional[str] = None
+    bio: Optional[str] = None
+    primary_email: Optional[str] = None
+    login_id: Optional[str] = None
+
 # Helper functions
 async def get_canvas_client(token: str):
     """Create an HTTP client with Canvas authorization headers"""
@@ -97,8 +108,31 @@ async def get_canvas_client(token: str):
         headers={"Authorization": f"Bearer {token}"}
     )
 
+def get_canvas_instance(token: str):
+    """Create a Canvas instance using the canvasapi library"""
+    return Canvas(CANVAS_API_BASE_URL, token)
+
 def calculate_priority(assignment: Dict[str, Any]) -> int:
-    """Calculate priority based on due date, points, and other factors"""
+    """Calculate priority based on due date, points, and other factors using Gemini AI"""
+    # First calculate a basic priority score using the existing algorithm
+    basic_priority = calculate_basic_priority(assignment)
+    
+    # Try to enhance priority with Gemini AI
+    try:
+        # Only use Gemini for assignments with descriptions
+        description = assignment.get("description", "")
+        if description and len(description) > 50:
+            enhanced_priority = asyncio.run(calculate_priority_with_gemini(assignment))
+            if enhanced_priority is not None:
+                return enhanced_priority
+    except Exception as e:
+        print(f"Error calculating priority with Gemini: {e}")
+    
+    # Fallback to basic priority if Gemini fails or no description
+    return basic_priority
+
+def calculate_basic_priority(assignment: Dict[str, Any]) -> int:
+    """Calculate basic priority based on due date and points"""
     # Simple priority algorithm - can be enhanced
     priority = 0
     
@@ -129,6 +163,67 @@ def calculate_priority(assignment: Dict[str, Any]) -> int:
             priority += 1
     
     return priority
+
+async def calculate_priority_with_gemini(assignment: Dict[str, Any]) -> Optional[int]:
+    """Use Gemini to calculate a more intelligent priority score"""
+    try:
+        # Use the same model as in summarize_content
+        model_name = "models/gemini-1.5-flash"
+        print(f"Attempting to use model for priority calculation: {model_name}")
+        
+        model = genai.GenerativeModel(model_name)
+        
+        # Extract relevant information for the prompt
+        name = assignment.get("name", "Unnamed Assignment")
+        description = assignment.get("description", "")
+        due_date_str = "No due date"
+        days_until_due = None
+        
+        if assignment.get("due_at"):
+            due_date = datetime.fromisoformat(assignment["due_at"].replace("Z", "+00:00"))
+            due_date_str = due_date.strftime("%Y-%m-%d %H:%M")
+            days_until_due = (due_date - datetime.now().astimezone()).days
+        
+        points = assignment.get("points_possible", 0)
+        
+        # Create a prompt for Gemini
+        prompt = f"""
+        Analyze this assignment and assign a priority score from 1-15 (15 being highest priority).
+        
+        Assignment: {name}
+        Due date: {due_date_str}
+        Days until due: {days_until_due}
+        Points: {points}
+        Description: {description[:500]}...
+        
+        Consider factors like:
+        - Urgency based on due date
+        - Importance based on points
+        - Complexity based on description
+        - Time required to complete
+        
+        Return only a single number between 1 and 15.
+        """
+        
+        response = model.generate_content(prompt)
+        
+        # Extract the priority score from the response
+        try:
+            # Try to parse the response as a number
+            priority_text = response.text.strip()
+            # Remove any non-numeric characters
+            priority_text = ''.join(c for c in priority_text if c.isdigit())
+            if priority_text:
+                priority = int(priority_text)
+                # Ensure the priority is within the expected range
+                return max(1, min(15, priority))
+        except ValueError:
+            print(f"Could not parse priority from Gemini response: {response.text}")
+            return None
+            
+    except Exception as e:
+        print(f"Error in calculate_priority_with_gemini: {e}")
+        return None
 
 async def summarize_content(content: str) -> str:
     """Summarize content using Gemini API"""
@@ -445,3 +540,35 @@ async def list_models():
     except Exception as e:
         print(f"Error listing models: {e}")
         raise HTTPException(status_code=500, detail=f"Error listing models: {str(e)}")
+
+@app.get("/api/py/user/profile", response_model=UserProfile)
+async def get_user_profile(token: str):
+    """
+    Get the user's profile information from Canvas.
+    
+    This endpoint uses the canvasapi library to retrieve the user's profile information.
+    
+    - **token**: Canvas API token
+    
+    Returns the user's profile information.
+    """
+    try:
+        # Get Canvas instance
+        canvas = get_canvas_instance(token)
+        
+        # Get current user
+        user = canvas.get_current_user()
+        
+        # Return user profile
+        return UserProfile(
+            id=user.id,
+            name=user.name,
+            email=getattr(user, 'email', None),
+            avatar_url=getattr(user, 'avatar_url', None),
+            bio=getattr(user, 'bio', None),
+            primary_email=getattr(user, 'primary_email', None),
+            login_id=getattr(user, 'login_id', None)
+        )
+    except Exception as e:
+        print(f"Error getting user profile: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting user profile: {str(e)}")
