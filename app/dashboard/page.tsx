@@ -8,13 +8,50 @@ import DashboardHeader from "@/app/components/DashboardHeader";
 import FilterBar from "@/app/components/FilterBar";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 
 // Define the assignments limit constant
 const ASSIGNMENTS_LIMIT = 20;
 
-// Lazy load the AssignmentRecommendations component
-const AssignmentRecommendations = lazy(
-  () => import("@/app/components/AssignmentRecommendations")
+// Use dynamic import with error handling instead of lazy
+const AssignmentRecommendations = dynamic(
+  () =>
+    import("@/app/components/AssignmentRecommendations").catch((err) => {
+      console.error("Error loading AssignmentRecommendations:", err);
+      return () => (
+        <div className="p-6 bg-white rounded-lg shadow-sm">
+          <div className="text-center py-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-red-100 mb-4">
+              <svg
+                className="w-8 h-8 text-red-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                ></path>
+              </svg>
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              Failed to load recommendations
+            </h3>
+            <p className="text-gray-500">Please try refreshing the page</p>
+          </div>
+        </div>
+      );
+    }),
+  {
+    loading: () => (
+      <div className="flex justify-center items-center h-64">
+        <LoadingSpinner size="large" />
+      </div>
+    ),
+    ssr: false,
+  }
 );
 
 interface Assignment {
@@ -250,18 +287,11 @@ export default function Dashboard() {
         )}
 
         <div className="mt-12 bg-white rounded-lg shadow-sm p-6">
-          <Suspense
-            fallback={
-              <div className="flex justify-center items-center h-64">
-                <LoadingSpinner size="large" />
-              </div>
-            }
-          >
-            <AssignmentRecommendations
-              courseId={selectedCourse || 0}
-              token={token || ""}
-            />
-          </Suspense>
+          {/* Use the dynamic component directly without Suspense */}
+          <AssignmentRecommendations
+            courseId={selectedCourse || 0}
+            token={token || ""}
+          />
         </div>
       </main>
     </div>
