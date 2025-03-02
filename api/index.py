@@ -11,11 +11,14 @@ import asyncio
 from canvasapi import Canvas
 import time
 from functools import lru_cache
+from datetime import datetime, timezone
 
 # Load environment variables from both root and api directories
 load_dotenv()  # Load from root .env file
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))  # Load from api/.env file
 
+# Create a full datetime object with timezone information
+today = datetime.now(timezone.utc)
 # Debug: Print API key (partially masked)
 api_key = os.getenv("GEMINI_API_KEY", "")
 if api_key:
@@ -65,6 +68,7 @@ class Assignment(BaseModel):
     course_name: str
     priority: Optional[int] = None
     summary: Optional[str] = None
+    bucket: Optional[str] = "upcoming"  # Add bucket field with default value
 
 class Course(BaseModel):
     id: int
@@ -157,6 +161,7 @@ async def get_assignments(
                 courses = [{"id": course_id}]
             
             all_assignments = []
+            courses_with_assignments = set()  # Track which courses have assignments
             
             # Get assignments for each course
             for course in courses:
@@ -170,17 +175,31 @@ async def get_assignments(
                 
                 course_response, assignments_response = await asyncio.gather(course_task, assignments_task)
                 
+
                 if course_response.status_code != 200 or assignments_response.status_code != 200:
                     continue  # Skip if can't get course details or assignments
                 
                 course_details = course_response.json()
                 assignments = assignments_response.json()
                 
+                course_has_assignments = False  # Flag to track if this course has any assignments
+                # print("----")
                 for assignment in assignments:
+                    print(assignment)
                     # Skip completed assignments
                     submission = assignment.get("submission", {})
-                    if submission and submission.get("workflow_state") == "submitted":
-                        continue
+                    # print(assignment.get('name'), "------", submission.get('workflow_state'), "------", submission.get('cached_due_date'))
+                    
+                    # Convert cached_due_date string to a proper datetime object
+                    if submission and submission.get('cached_due_date'):
+                        future_date = datetime.fromisoformat(submission.get('cached_due_date').replace('Z', '+00:00'))
+                        # Compare the full datetime objects, not just the dates
+                        if submission and future_date and (future_date < today):
+                            continue
+                    else:
+                        future_date = None
+                    
+                    
                     
                     # Calculate priority (simplified)
                     priority = calculate_basic_priority(assignment)
@@ -190,6 +209,17 @@ async def get_assignments(
                     summary = ""
                     if not skip_summarization and description:
                         summary = fallback_summarize(description)  # Use fast fallback by default
+                    
+                    # Determine bucket based on due date
+                    bucket = "upcoming"
+                    if assignment.get("due_at"):
+                        due_date = datetime.fromisoformat(assignment["due_at"].replace("Z", "+00:00"))
+                        if due_date < today:
+                            bucket = "past_due"
+                        elif (due_date - today).days < 1:
+                            bucket = "due_today"
+                        elif (due_date - today).days < 7:
+                            bucket = "due_this_week"
                     
                     all_assignments.append(
                         Assignment(
@@ -201,7 +231,27 @@ async def get_assignments(
                             course_id=course_id,
                             course_name=course_details["name"],
                             priority=priority,
-                            summary=summary
+                            summary=summary,
+                            bucket=bucket
+                        )
+                    )
+                    course_has_assignments = True
+                    courses_with_assignments.add(course_id)
+                
+                # If this course had no valid assignments, add a placeholder
+                if not course_has_assignments:
+                    all_assignments.append(
+                        Assignment(
+                            id=-course_id,  # Use negative ID to indicate this is a placeholder
+                            name="No assignments due",
+                            description="This course has no upcoming assignments.",
+                            due_at=None,
+                            points_possible=0,
+                            course_id=course_id,
+                            course_name=course_details["name"],
+                            priority=0,
+                            summary="No upcoming assignments for this course.",
+                            bucket="upcoming"
                         )
                     )
             
