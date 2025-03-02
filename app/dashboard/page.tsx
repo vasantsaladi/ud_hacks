@@ -1,13 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense, lazy } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/app/context/AuthContext";
 import AssignmentCard from "@/app/components/AssignmentCard";
 import DashboardHeader from "@/app/components/DashboardHeader";
 import FilterBar from "@/app/components/FilterBar";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
-import AssignmentRecommendations from "@/app/components/AssignmentRecommendations";
+// Lazy load the AssignmentRecommendations component
+const AssignmentRecommendations = lazy(
+  () => import("@/app/components/AssignmentRecommendations")
+);
 
 interface Assignment {
   id: number;
@@ -34,6 +37,7 @@ export default function Dashboard() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [recommendationsLoading, setRecommendationsLoading] = useState(true);
 
   // Filter states
   const [selectedCourse, setSelectedCourse] = useState<number | null>(null);
@@ -77,7 +81,7 @@ export default function Dashboard() {
         );
 
         const fetchPromise = fetch(
-          `/api/py/assignments?skip_summarization=true&limit=20`,
+          `/api/py/assignments?skip_summarization=true&limit=15`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
@@ -110,6 +114,17 @@ export default function Dashboard() {
       setLoading(false);
     });
   }, [isAuthenticated, router, token]);
+
+  // Effect to handle recommendations loading state
+  useEffect(() => {
+    if (!loading) {
+      // Set a timeout to hide the recommendations loading state after assignments are loaded
+      const timer = setTimeout(() => {
+        setRecommendationsLoading(false);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [loading]);
 
   // Filter and sort assignments
   const filteredAssignments = assignments
@@ -176,21 +191,27 @@ export default function Dashboard() {
           Assignment Dashboard
         </h1>
 
-        {/* Assignment Recommendations */}
-        {!selectedCourse && (
-          <div className="mb-8">
-            <AssignmentRecommendations courseId={0} token={token} />
-          </div>
-        )}
-
-        {selectedCourse && (
-          <div className="mb-8">
-            <AssignmentRecommendations
-              courseId={selectedCourse}
-              token={token}
-            />
-          </div>
-        )}
+        {/* Assignment Recommendations with Suspense */}
+        <div className="mb-8">
+          {recommendationsLoading ? (
+            <div className="bg-white p-6 rounded-lg shadow">
+              <LoadingSpinner message="Loading recommendations..." />
+            </div>
+          ) : (
+            <Suspense
+              fallback={
+                <div className="bg-white p-6 rounded-lg shadow">
+                  <LoadingSpinner message="Loading recommendations..." />
+                </div>
+              }
+            >
+              <AssignmentRecommendations
+                courseId={selectedCourse || 0}
+                token={token}
+              />
+            </Suspense>
+          )}
+        </div>
 
         <FilterBar
           courses={courses}
