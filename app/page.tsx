@@ -1,13 +1,16 @@
 "use client";
 
-import { useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "./context/AuthContext";
 import Image from "next/image";
 
 export default function Home() {
   const router = useRouter();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, login } = useAuth();
+  const [token, setToken] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     // Redirect to dashboard if already authenticated
@@ -16,20 +19,40 @@ export default function Home() {
     }
   }, [isAuthenticated, router]);
 
-  const handleCanvasLogin = () => {
-    const clientId = process.env.NEXT_PUBLIC_CANVAS_CLIENT_ID;
-    const redirectUri = process.env.NEXT_PUBLIC_CANVAS_REDIRECT_URI;
+  const handleTokenSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError("");
 
-    if (!clientId || !redirectUri) {
-      console.error("Canvas OAuth credentials not configured");
+    if (!token.trim()) {
+      setError("Please enter your Canvas API token");
+      setIsLoading(false);
       return;
     }
 
-    const authUrl = `https://canvas.instructure.com/login/oauth2/auth?client_id=${clientId}&response_type=code&redirect_uri=${encodeURIComponent(
-      redirectUri
-    )}&scope=url:GET|/api/v1/courses`;
+    try {
+      // Test the token by making a request to the courses endpoint
+      const response = await fetch("/api/py/courses", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
-    window.location.href = authUrl;
+      if (!response.ok) {
+        throw new Error("Invalid token or API error");
+      }
+
+      // If successful, log the user in
+      login(token, 0); // We don't have a user ID with direct token auth
+      router.push("/dashboard");
+    } catch (err) {
+      console.error("Authentication error:", err);
+      setError(
+        "Failed to authenticate. Please check your token and try again."
+      );
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -124,46 +147,66 @@ export default function Home() {
               </ul>
             </div>
             <div className="bg-blue-600 p-8 flex items-center justify-center">
-              <div className="text-center">
+              <div className="text-center w-full">
                 <h3 className="text-xl font-semibold text-white mb-6">
                   Get Started Now
                 </h3>
-                <button
-                  onClick={handleCanvasLogin}
-                  className="bg-white text-blue-600 hover:bg-blue-50 font-bold py-3 px-6 rounded-lg shadow-md transition-colors duration-200 flex items-center justify-center"
-                >
-                  <svg
-                    className="w-6 h-6 mr-2"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
+                <form onSubmit={handleTokenSubmit} className="space-y-4">
+                  <div>
+                    <input
+                      type="text"
+                      value={token}
+                      onChange={(e) => setToken(e.target.value)}
+                      placeholder="Enter your Canvas API token"
+                      className="w-full px-4 py-2 rounded-lg text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                      required
+                    />
+                  </div>
+                  {error && <p className="text-red-200 text-sm">{error}</p>}
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="bg-white text-blue-600 hover:bg-blue-50 font-bold py-3 px-6 rounded-lg shadow-md transition-colors duration-200 flex items-center justify-center w-full"
                   >
-                    <path
-                      d="M12 2L2 7L12 12L22 7L12 2Z"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <path
-                      d="M2 17L12 22L22 17"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <path
-                      d="M2 12L12 17L22 12"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                  Login with Canvas
-                </button>
+                    {isLoading ? (
+                      <span>Loading...</span>
+                    ) : (
+                      <>
+                        <svg
+                          className="w-6 h-6 mr-2"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          <path
+                            d="M12 2L2 7L12 12L22 7L12 2Z"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                          <path
+                            d="M2 17L12 22L22 17"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                          <path
+                            d="M2 12L12 17L22 12"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                        Login with Canvas Token
+                      </>
+                    )}
+                  </button>
+                </form>
                 <p className="text-blue-100 mt-4 text-sm">
-                  Securely connect with your Canvas account
+                  Enter the Canvas API token from your Canvas settings
                 </p>
               </div>
             </div>

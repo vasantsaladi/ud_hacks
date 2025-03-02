@@ -49,18 +49,10 @@ app.add_middleware(
 
 # Canvas API base URL
 CANVAS_API_BASE_URL = "https://canvas.instructure.com/api/v1"
+# Get Canvas API token from environment
+CANVAS_API_TOKEN = os.getenv("CANVAS_API_TOKEN", "")
 
 # Models
-class CanvasAuthRequest(BaseModel):
-    code: str
-    redirect_uri: str
-
-class CanvasTokenResponse(BaseModel):
-    access_token: str
-    user_id: int
-    refresh_token: Optional[str] = None
-    expires_in: Optional[int] = None
-
 class Assignment(BaseModel):
     id: int
     name: str
@@ -102,10 +94,10 @@ class UserProfile(BaseModel):
     login_id: Optional[str] = None
 
 # Helper functions
-async def get_canvas_client(token: str):
-    """Create an HTTP client with Canvas authorization headers"""
+async def get_canvas_client():
+    """Create an HTTP client with Canvas authorization headers using the API token"""
     return httpx.AsyncClient(
-        headers={"Authorization": f"Bearer {token}"}
+        headers={"Authorization": f"Bearer {CANVAS_API_TOKEN}"}
     )
 
 def get_canvas_instance(token: str):
@@ -252,40 +244,11 @@ def health_check():
 def hello_fast_api():
     return {"message": "Hello from FastAPI"}
 
-@app.post("/api/py/auth/canvas", response_model=CanvasTokenResponse)
-async def exchange_canvas_code(auth_request: CanvasAuthRequest):
-    """Exchange Canvas OAuth code for access token"""
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                "https://canvas.instructure.com/login/oauth2/token",
-                data={
-                    "client_id": os.getenv("CANVAS_CLIENT_ID"),
-                    "client_secret": os.getenv("CANVAS_CLIENT_SECRET"),
-                    "code": auth_request.code,
-                    "redirect_uri": auth_request.redirect_uri,
-                    "grant_type": "authorization_code"
-                }
-            )
-            
-            if response.status_code != 200:
-                raise HTTPException(status_code=response.status_code, detail="Failed to authenticate with Canvas")
-                
-            token_data = response.json()
-            return CanvasTokenResponse(
-                access_token=token_data["access_token"],
-                user_id=token_data["user_id"],
-                refresh_token=token_data.get("refresh_token"),
-                expires_in=token_data.get("expires_in")
-            )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Authentication error: {str(e)}")
-
 @app.get("/api/py/courses", response_model=List[Course])
-async def get_courses(token: str):
+async def get_courses():
     """Get list of courses for the authenticated user"""
     try:
-        async with await get_canvas_client(token) as client:
+        async with await get_canvas_client() as client:
             response = await client.get(f"{CANVAS_API_BASE_URL}/courses?enrollment_state=active")
             
             if response.status_code != 200:
@@ -307,10 +270,10 @@ async def get_courses(token: str):
         raise HTTPException(status_code=500, detail=f"Error fetching courses: {str(e)}")
 
 @app.get("/api/py/assignments", response_model=List[Assignment])
-async def get_assignments(token: str, course_id: Optional[int] = None):
+async def get_assignments(course_id: Optional[int] = None):
     """Get assignments with prioritization and summarization"""
     try:
-        async with await get_canvas_client(token) as client:
+        async with await get_canvas_client() as client:
             # Get courses if course_id not specified
             if not course_id:
                 courses_response = await client.get(f"{CANVAS_API_BASE_URL}/courses?enrollment_state=active")
@@ -376,10 +339,10 @@ async def get_assignments(token: str, course_id: Optional[int] = None):
         raise HTTPException(status_code=500, detail=f"Error fetching assignments: {str(e)}")
 
 @app.get("/api/py/assignment/{assignment_id}/summary")
-async def get_assignment_summary(assignment_id: int, token: str, course_id: int):
+async def get_assignment_summary(assignment_id: int, course_id: int):
     """Get a summary of an assignment description using Gemini API"""
     try:
-        async with await get_canvas_client(token) as client:
+        async with await get_canvas_client() as client:
             response = await client.get(
                 f"{CANVAS_API_BASE_URL}/courses/{course_id}/assignments/{assignment_id}"
             )
@@ -400,10 +363,10 @@ async def get_assignment_summary(assignment_id: int, token: str, course_id: int)
         raise HTTPException(status_code=500, detail=f"Error summarizing assignment: {str(e)}")
 
 @app.get("/api/py/analytics/{course_id}")
-async def get_course_analytics(course_id: int, token: str):
+async def get_course_analytics(course_id: int):
     """Get analytics data for visualization"""
     try:
-        async with await get_canvas_client(token) as client:
+        async with await get_canvas_client() as client:
             # Get assignments
             assignments_response = await client.get(
                 f"{CANVAS_API_BASE_URL}/courses/{course_id}/assignments"

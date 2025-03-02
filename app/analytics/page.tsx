@@ -48,7 +48,11 @@ export default function Analytics() {
     // Fetch courses
     const fetchCourses = async () => {
       try {
-        const response = await fetch(`/api/py/courses?token=${token}`);
+        const response = await fetch(`/api/py/courses`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
         if (!response.ok) {
           throw new Error("Failed to fetch courses");
         }
@@ -78,9 +82,11 @@ export default function Analytics() {
     const fetchAnalytics = async () => {
       setLoading(true);
       try {
-        const response = await fetch(
-          `/api/py/analytics/${selectedCourse}?token=${token}`
-        );
+        const response = await fetch(`/api/py/analytics/${selectedCourse}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
         if (!response.ok) {
           throw new Error("Failed to fetch analytics data");
         }

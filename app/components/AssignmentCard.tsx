@@ -17,9 +17,13 @@ interface Assignment {
 
 interface AssignmentCardProps {
   assignment: Assignment;
+  token: string;
 }
 
-const AssignmentCard: React.FC<AssignmentCardProps> = ({ assignment }) => {
+const AssignmentCard: React.FC<AssignmentCardProps> = ({
+  assignment,
+  token,
+}) => {
   const [showSummary, setShowSummary] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [summary, setSummary] = useState<string | null>(assignment.summary);
@@ -54,11 +58,12 @@ const AssignmentCard: React.FC<AssignmentCardProps> = ({ assignment }) => {
     setIsLoading(true);
     try {
       const response = await fetch(
-        `/api/py/assignment/${
-          assignment.id
-        }/summary?token=${localStorage.getItem("canvas_token")}&course_id=${
-          assignment.course_id
-        }`
+        `/api/py/assignment/${assignment.id}/summary?course_id=${assignment.course_id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
       );
       if (response.ok) {
         const data = await response.json();
