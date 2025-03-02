@@ -5,12 +5,13 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "./context/AuthContext";
 import Image from "next/image";
 
+// Default token for development - in production this should be empty
+const DEFAULT_CANVAS_TOKEN = process.env.NEXT_PUBLIC_CANVAS_API_TOKEN || "";
+
 export default function Home() {
   const router = useRouter();
   const { isAuthenticated, login } = useAuth();
-  const [token, setToken] = useState(
-    "7~uBEHXWhunu98cWkzZKMamcFr67cZkXA2cURPJX4DJEU4ETtkRrZ4RX6FnZWU3WYJ"
-  );
+  const [token, setToken] = useState(DEFAULT_CANVAS_TOKEN);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -18,8 +19,8 @@ export default function Home() {
     // Redirect to dashboard if already authenticated
     if (isAuthenticated) {
       router.push("/dashboard");
-    } else {
-      // Auto-login for demo purposes
+    } else if (DEFAULT_CANVAS_TOKEN) {
+      // Auto-login for demo purposes if token is available in environment variables
       handleTokenSubmit();
     }
   }, [isAuthenticated, router]);
@@ -168,10 +169,15 @@ export default function Home() {
                       className="w-full px-4 py-2 rounded-lg text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-300"
                       required
                     />
+                    {DEFAULT_CANVAS_TOKEN && (
+                      <p className="text-xs text-blue-100 mt-1">
+                        Using token from environment variables
+                      </p>
+                    )}
                   </div>
                   {error && <p className="text-red-200 text-sm">{error}</p>}
                   <div className="bg-yellow-100 text-yellow-800 p-2 rounded-lg text-sm mb-2">
-                    Demo Mode: Using pre-configured Canvas API token
+                    Demo Mode: Using Canvas API token from environment variables
                   </div>
                   <button
                     type="submit"

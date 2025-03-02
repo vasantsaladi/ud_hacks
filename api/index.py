@@ -109,18 +109,10 @@ def calculate_priority(assignment: Dict[str, Any]) -> int:
     # First calculate a basic priority score using the existing algorithm
     basic_priority = calculate_basic_priority(assignment)
     
-    # Try to enhance priority with Gemini AI
-    try:
-        # Only use Gemini for assignments with descriptions
-        description = assignment.get("description", "")
-        if description and len(description) > 50:
-            enhanced_priority = asyncio.run(calculate_priority_with_gemini(assignment))
-            if enhanced_priority is not None:
-                return enhanced_priority
-    except Exception as e:
-        print(f"Error calculating priority with Gemini: {e}")
+    # We'll skip the Gemini AI enhancement for now since it's causing asyncio errors
+    # The asyncio.run() call is causing issues when called from within an async context
     
-    # Fallback to basic priority if Gemini fails or no description
+    # Just return the basic priority
     return basic_priority
 
 def calculate_basic_priority(assignment: Dict[str, Any]) -> int:
@@ -222,6 +214,10 @@ async def summarize_content(content: str) -> str:
     if not content or len(content) < 100:
         return content
     
+    # If quota is exhausted, use a simple fallback summarization
+    if os.getenv("USE_FALLBACK_SUMMARIZATION", "false").lower() == "true":
+        return fallback_summarize(content)
+    
     try:
         # Use the same model as in gemini_endpoint
         model_name = "models/gemini-1.5-flash"
@@ -230,10 +226,39 @@ async def summarize_content(content: str) -> str:
         model = genai.GenerativeModel(model_name)
         prompt = f"Summarize the following assignment description concisely, highlighting key requirements and deadlines:\n\n{content}"
         response = model.generate_content(prompt)
-        return response.text
+        
+        # Check response format and extract text
+        if hasattr(response, 'text'):
+            return response.text
+        elif hasattr(response, 'parts') and response.parts:
+            return ''.join(part.text for part in response.parts if hasattr(part, 'text'))
+        elif isinstance(response, str):
+            return response
+        else:
+            print(f"Unexpected response type: {type(response)}")
+            # Return a fallback summary if we can't parse the response
+            return fallback_summarize(content)
     except Exception as e:
-        print(f"Error summarizing content: {e}")
-        return "Summary unavailable"
+        print(f"Gemini API error in summarization: {e}")
+        # If we get a quota error, set the fallback flag
+        if "429" in str(e) or "exhausted" in str(e).lower():
+            os.environ["USE_FALLBACK_SUMMARIZATION"] = "true"
+            print("Switching to fallback summarization due to quota limits")
+        return fallback_summarize(content)  # Always use fallback on any error
+
+def fallback_summarize(content: str) -> str:
+    """Simple fallback summarization when API is unavailable"""
+    # Take the first 200 characters as a simple summary
+    if len(content) <= 200:
+        return content
+    
+    # Find the first period after 100 characters to end the summary naturally
+    cutoff = min(200, len(content))
+    period_pos = content.find('.', 100, cutoff)
+    if period_pos > 0:
+        return content[:period_pos+1] + " [...]"
+    else:
+        return content[:cutoff] + " [...]"
 
 # Endpoints
 @app.get("/api/py/health")
@@ -555,10 +580,17 @@ async def gemini_endpoint(request: GeminiRequest):
             }
         )
         
-        return GeminiResponse(text=response.text)
+        # Extract text from response
+        if hasattr(response, 'text'):
+            return GeminiResponse(text=response.text)
+        elif hasattr(response, 'parts') and response.parts:
+            text = ''.join(part.text for part in response.parts if hasattr(part, 'text'))
+            return GeminiResponse(text=text)
+        else:
+            return GeminiResponse(text="Unable to generate response")
     except Exception as e:
         print(f"Gemini API error: {e}")
-        raise HTTPException(status_code=500, detail=f"Error generating text: {str(e)}")
+        return GeminiResponse(text=f"Error: {str(e)}")
 
 @app.post("/api/py/summarize", response_model=GeminiResponse)
 async def summarize_content_endpoint(request: SummarizeRequest):
@@ -590,10 +622,21 @@ async def summarize_content_endpoint(request: SummarizeRequest):
             }
         )
         
-        return GeminiResponse(text=response.text)
+        # Extract text from response
+        if hasattr(response, 'text'):
+            return GeminiResponse(text=response.text)
+        elif hasattr(response, 'parts') and response.parts:
+            text = ''.join(part.text for part in response.parts if hasattr(part, 'text'))
+            return GeminiResponse(text=text)
+        else:
+            # Fallback to simple summarization
+            summary = fallback_summarize(request.content)
+            return GeminiResponse(text=summary)
     except Exception as e:
         print(f"Gemini API error in summarization: {e}")
-        raise HTTPException(status_code=500, detail=f"Error generating summary: {str(e)}")
+        # Fallback to simple summarization on error
+        summary = fallback_summarize(request.content)
+        return GeminiResponse(text=summary)
 
 @app.get("/api/py/models")
 async def list_models():
