@@ -354,24 +354,24 @@ export default function Chat() {
         try {
           const response = await fetch(
             `/api/py/assignments?course_id=${course.id}`,
-            {
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
-            }
-          );
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
 
           if (response.ok) {
             const assignments = await response.json();
             let courseContext = `Course: ${course.name} (${course.code})\n`;
             courseContext += "Assignments:\n";
-            assignments.forEach((assignment: any) => {
+          assignments.forEach((assignment: any) => {
               courseContext += `- ${assignment.name} (Due: ${
-                assignment.due_at
-                  ? new Date(assignment.due_at).toLocaleDateString()
-                  : "No due date"
-              })\n`;
-            });
+              assignment.due_at
+                ? new Date(assignment.due_at).toLocaleDateString()
+                : "No due date"
+            })\n`;
+          });
             courseContext += "\n";
             return courseContext;
           }
@@ -561,11 +561,11 @@ export default function Chat() {
         return [
           ...newMessages,
           {
-            role: "assistant",
-            content:
-              data.text ||
-              "I'm sorry, I couldn't process your request at this time.",
-            timestamp: new Date(),
+        role: "assistant",
+        content:
+          data.text ||
+          "I'm sorry, I couldn't process your request at this time.",
+        timestamp: new Date(),
           },
         ];
       });
@@ -578,10 +578,10 @@ export default function Chat() {
         return [
           ...newMessages,
           {
-            role: "assistant",
-            content:
-              "I'm sorry, I encountered an error processing your request. Please try again later.",
-            timestamp: new Date(),
+        role: "assistant",
+        content:
+          "I'm sorry, I encountered an error processing your request. Please try again later.",
+        timestamp: new Date(),
           },
         ];
       });
@@ -689,7 +689,6 @@ export default function Chat() {
             Canvas Assistant Chat
           </h1>
 
-          {/* Course summary - replacing the selector */}
           <div className="text-sm text-gray-600">
             {courses.length} Course{courses.length !== 1 ? "s" : ""} Loaded
           </div>
@@ -783,17 +782,17 @@ export default function Chat() {
                           />
                         )
                       ) : (
-                        <p className="whitespace-pre-wrap">{message.content}</p>
+                  <p className="whitespace-pre-wrap">{message.content}</p>
                       )}
-                      <p
+                  <p
                         className={`text-xs mt-2 ${
-                          message.role === "user"
-                            ? "text-blue-100"
+                      message.role === "user"
+                        ? "text-blue-100"
                             : "text-gray-400"
-                        }`}
-                      >
-                        {message.timestamp.toLocaleTimeString()}
-                      </p>
+                    }`}
+                  >
+                    {message.timestamp.toLocaleTimeString()}
+                  </p>
                     </div>
                   </div>
                 </div>
@@ -807,7 +806,7 @@ export default function Chat() {
         <div className="flex items-start space-x-3 bg-white p-4 rounded-lg shadow-md border border-gray-100">
           {/* File upload button */}
           <div className="relative">
-            <input
+          <input
               type="file"
               ref={fileInputRef}
               onChange={handleFileSelect}
