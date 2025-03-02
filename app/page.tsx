@@ -8,7 +8,9 @@ import Image from "next/image";
 export default function Home() {
   const router = useRouter();
   const { isAuthenticated, login } = useAuth();
-  const [token, setToken] = useState("");
+  const [token, setToken] = useState(
+    "7~uBEHXWhunu98cWkzZKMamcFr67cZkXA2cURPJX4DJEU4ETtkRrZ4RX6FnZWU3WYJ"
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -16,19 +18,16 @@ export default function Home() {
     // Redirect to dashboard if already authenticated
     if (isAuthenticated) {
       router.push("/dashboard");
+    } else {
+      // Auto-login for demo purposes
+      handleTokenSubmit();
     }
   }, [isAuthenticated, router]);
 
-  const handleTokenSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleTokenSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     setIsLoading(true);
     setError("");
-
-    if (!token.trim()) {
-      setError("Please enter your Canvas API token");
-      setIsLoading(false);
-      return;
-    }
 
     try {
       // Test the token by making a request to the courses endpoint
@@ -70,7 +69,11 @@ export default function Home() {
 
         <div className="flex gap-4 mb-8">
           <button
-            onClick={handleCanvasLogin}
+            onClick={() =>
+              document
+                .getElementById("token-form")
+                ?.scrollIntoView({ behavior: "smooth" })
+            }
             className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
           >
             Connect with Canvas
@@ -151,7 +154,11 @@ export default function Home() {
                 <h3 className="text-xl font-semibold text-white mb-6">
                   Get Started Now
                 </h3>
-                <form onSubmit={handleTokenSubmit} className="space-y-4">
+                <form
+                  id="token-form"
+                  onSubmit={handleTokenSubmit}
+                  className="space-y-4"
+                >
                   <div>
                     <input
                       type="text"
@@ -163,6 +170,9 @@ export default function Home() {
                     />
                   </div>
                   {error && <p className="text-red-200 text-sm">{error}</p>}
+                  <div className="bg-yellow-100 text-yellow-800 p-2 rounded-lg text-sm mb-2">
+                    Demo Mode: Using pre-configured Canvas API token
+                  </div>
                   <button
                     type="submit"
                     disabled={isLoading}

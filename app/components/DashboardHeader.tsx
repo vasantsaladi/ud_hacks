@@ -37,6 +37,14 @@ const DashboardHeader: React.FC = () => {
                   Analytics
                 </Link>
               </li>
+              <li>
+                <Link
+                  href="/statistics"
+                  className="text-gray-700 hover:text-blue-600 font-medium"
+                >
+                  Statistics
+                </Link>
+              </li>
             </ul>
           </nav>
         </div>

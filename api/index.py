@@ -323,6 +323,116 @@ async def get_course_analytics(course_id: int):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching analytics: {str(e)}")
 
+@app.get("/api/py/course_statistics/{course_id}")
+async def get_course_statistics(course_id: int):
+    """Get detailed statistics for a specific course"""
+    try:
+        async with await get_canvas_client() as client:
+            # Get course details
+            course_response = await client.get(
+                f"{CANVAS_API_BASE_URL}/courses/{course_id}"
+            )
+            if course_response.status_code != 200:
+                raise HTTPException(status_code=course_response.status_code, detail="Failed to fetch course details")
+            
+            course = course_response.json()
+            
+            # Get assignments
+            assignments_response = await client.get(
+                f"{CANVAS_API_BASE_URL}/courses/{course_id}/assignments"
+            )
+            if assignments_response.status_code != 200:
+                raise HTTPException(status_code=assignments_response.status_code, detail="Failed to fetch assignments")
+            
+            assignments = assignments_response.json()
+            
+            # Get submissions if available
+            submissions = []
+            try:
+                submissions_response = await client.get(
+                    f"{CANVAS_API_BASE_URL}/courses/{course_id}/students/submissions"
+                )
+                if submissions_response.status_code == 200:
+                    submissions = submissions_response.json()
+            except:
+                # Continue even if submissions can't be fetched
+                pass
+            
+            # Calculate statistics
+            total_assignments = len(assignments)
+            completed_assignments = 0
+            upcoming_assignments = 0
+            past_due_assignments = 0
+            total_points = 0
+            earned_points = 0
+            
+            now = datetime.now().astimezone()
+            
+            for assignment in assignments:
+                # Check if there's a due date
+                if assignment.get("due_at"):
+                    due_date = datetime.fromisoformat(assignment["due_at"].replace("Z", "+00:00"))
+                    if due_date < now:
+                        past_due_assignments += 1
+                    else:
+                        upcoming_assignments += 1
+                
+                # Add to total points
+                if assignment.get("points_possible"):
+                    total_points += assignment["points_possible"]
+                
+                # Check if completed
+                assignment_submissions = [s for s in submissions if s.get("assignment_id") == assignment["id"]]
+                if assignment_submissions and any(s.get("workflow_state") == "submitted" for s in assignment_submissions):
+                    completed_assignments += 1
+                    # Add to earned points if graded
+                    for submission in assignment_submissions:
+                        if submission.get("score") is not None:
+                            earned_points += submission["score"]
+            
+            # Calculate grade percentage if possible
+            grade_percentage = (earned_points / total_points * 100) if total_points > 0 else 0
+            
+            # Prepare statistics response
+            statistics = {
+                "course_name": course.get("name", ""),
+                "course_code": course.get("course_code", ""),
+                "total_assignments": total_assignments,
+                "completed_assignments": completed_assignments,
+                "completion_percentage": (completed_assignments / total_assignments * 100) if total_assignments > 0 else 0,
+                "upcoming_assignments": upcoming_assignments,
+                "past_due_assignments": past_due_assignments,
+                "total_points": total_points,
+                "earned_points": earned_points,
+                "grade_percentage": grade_percentage,
+                "assignments_by_type": {},  # Group assignments by type if available
+                "time_distribution": {}  # Time distribution of assignments if available
+            }
+            
+            # Group assignments by type if available
+            for assignment in assignments:
+                assignment_type = assignment.get("submission_types", [""])[0]
+                if assignment_type:
+                    if assignment_type not in statistics["assignments_by_type"]:
+                        statistics["assignments_by_type"][assignment_type] = 0
+                    statistics["assignments_by_type"][assignment_type] += 1
+            
+            # Calculate time distribution (e.g., assignments due by day of week)
+            days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+            for day in days_of_week:
+                statistics["time_distribution"][day] = 0
+            
+            for assignment in assignments:
+                if assignment.get("due_at"):
+                    due_date = datetime.fromisoformat(assignment["due_at"].replace("Z", "+00:00"))
+                    day_of_week = days_of_week[due_date.weekday()]
+                    statistics["time_distribution"][day_of_week] += 1
+            
+            return statistics
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching course statistics: {str(e)}")
+
 @app.post("/api/py/gemini", response_model=GeminiResponse)
 async def gemini_endpoint(request: GeminiRequest):
     """
@@ -356,7 +466,7 @@ async def gemini_endpoint(request: GeminiRequest):
         raise HTTPException(status_code=500, detail=f"Error generating text: {str(e)}")
 
 @app.post("/api/py/summarize", response_model=GeminiResponse)
-async def summarize_content(request: SummarizeRequest):
+async def summarize_content_endpoint(request: SummarizeRequest):
     """
     Summarize content using Google's Gemini AI model.
     
