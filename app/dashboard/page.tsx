@@ -71,11 +71,26 @@ export default function Dashboard() {
     // Fetch assignments
     const fetchAssignments = async () => {
       try {
-        const response = await fetch(`/api/py/assignments`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
+        // Add a timeout to prevent hanging forever
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Request timed out")), 5000)
+        );
+
+        const fetchPromise = fetch(
+          `/api/py/assignments?skip_summarization=true&limit=20`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        // Race between fetch and timeout
+        const response = (await Promise.race([
+          fetchPromise,
+          timeoutPromise,
+        ])) as Response;
+
         if (!response.ok) {
           throw new Error("Failed to fetch assignments");
         }
@@ -89,8 +104,11 @@ export default function Dashboard() {
       }
     };
 
-    fetchCourses();
-    fetchAssignments();
+    // Fetch courses and assignments in parallel
+    Promise.all([fetchCourses(), fetchAssignments()]).catch((err) => {
+      console.error("Error in parallel fetching:", err);
+      setLoading(false);
+    });
   }, [isAuthenticated, router, token]);
 
   // Filter and sort assignments

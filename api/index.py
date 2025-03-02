@@ -1,14 +1,16 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import httpx
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 import google.generativeai as genai
 from dotenv import load_dotenv
 import asyncio
 from canvasapi import Canvas
+import time
+from functools import lru_cache
 
 # Load environment variables from both root and api directories
 load_dotenv()  # Load from root .env file
@@ -120,14 +122,106 @@ def get_canvas_instance(token: str):
     """Create a Canvas instance using the canvasapi library"""
     return Canvas(CANVAS_API_BASE_URL, token)
 
-def calculate_priority(assignment: Dict[str, Any]) -> int:
-    """Calculate priority based on due date, points, and other factors"""
-    # Just use the basic priority calculation to avoid Gemini API issues
-    return calculate_basic_priority(assignment)
+# Simple in-memory cache for assignments
+assignment_cache = {}
+assignment_cache_expiry = {}
+CACHE_TTL_SECONDS = 300  # 5 minutes cache TTL
 
+@app.get("/api/py/assignments", response_model=List[Assignment])
+async def get_assignments(
+    course_id: Optional[int] = None,
+    skip_summarization: bool = True,
+    limit: int = 100,
+    offset: int = 0
+):
+    """Get assignments with prioritization and optional summarization"""
+    try:
+        # Check cache first if we have a course_id
+        cache_key = f"assignments_{course_id}_{skip_summarization}"
+        current_time = time.time()
+        
+        if cache_key in assignment_cache and assignment_cache_expiry.get(cache_key, 0) > current_time:
+            # Return cached assignments with pagination
+            cached_assignments = assignment_cache[cache_key]
+            return cached_assignments[offset:offset+limit]
+        
+        async with await get_canvas_client() as client:
+            # Get courses if course_id not specified
+            if not course_id:
+                courses_response = await client.get(f"{CANVAS_API_BASE_URL}/courses?enrollment_state=active")
+                if courses_response.status_code != 200:
+                    raise HTTPException(status_code=courses_response.status_code, detail="Failed to fetch courses")
+                courses = courses_response.json()
+            else:
+                courses = [{"id": course_id}]
+            
+            all_assignments = []
+            
+            # Get assignments for each course
+            for course in courses:
+                course_id = course["id"]
+                
+                # Get course details and assignments in parallel
+                course_task = client.get(f"{CANVAS_API_BASE_URL}/courses/{course_id}")
+                assignments_task = client.get(
+                    f"{CANVAS_API_BASE_URL}/courses/{course_id}/assignments?include[]=submission"
+                )
+                
+                course_response, assignments_response = await asyncio.gather(course_task, assignments_task)
+                
+                if course_response.status_code != 200 or assignments_response.status_code != 200:
+                    continue  # Skip if can't get course details or assignments
+                
+                course_details = course_response.json()
+                assignments = assignments_response.json()
+                
+                for assignment in assignments:
+                    # Skip completed assignments
+                    submission = assignment.get("submission", {})
+                    if submission and submission.get("workflow_state") == "submitted":
+                        continue
+                    
+                    # Calculate priority (simplified)
+                    priority = calculate_basic_priority(assignment)
+                    
+                    # Only summarize if explicitly requested
+                    description = assignment.get("description", "")
+                    summary = ""
+                    if not skip_summarization and description:
+                        summary = fallback_summarize(description)  # Use fast fallback by default
+                    
+                    all_assignments.append(
+                        Assignment(
+                            id=assignment["id"],
+                            name=assignment["name"],
+                            description=description,
+                            due_at=datetime.fromisoformat(assignment["due_at"].replace("Z", "+00:00")) if assignment.get("due_at") else None,
+                            points_possible=assignment.get("points_possible"),
+                            course_id=course_id,
+                            course_name=course_details["name"],
+                            priority=priority,
+                            summary=summary
+                        )
+                    )
+            
+            # Sort by priority (descending)
+            all_assignments.sort(key=lambda x: x.priority or 0, reverse=True)
+            
+            # Cache the results
+            if course_id:  # Only cache if we're filtering by course
+                assignment_cache[cache_key] = all_assignments
+                assignment_cache_expiry[cache_key] = current_time + CACHE_TTL_SECONDS
+            
+            # Return paginated results
+            return all_assignments[offset:offset+limit]
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching assignments: {str(e)}")
+
+# Simplified priority calculation for speed
 def calculate_basic_priority(assignment: Dict[str, Any]) -> int:
     """Calculate basic priority based on due date and points"""
-    # Simple priority algorithm - can be enhanced
+    # Simple priority algorithm - optimized for speed
     priority = 0
     
     # Due date factor - closer due dates get higher priority
@@ -158,66 +252,19 @@ def calculate_basic_priority(assignment: Dict[str, Any]) -> int:
     
     return priority
 
-async def calculate_priority_with_gemini(assignment: Dict[str, Any]) -> Optional[int]:
-    """Use Gemini to calculate a more intelligent priority score"""
-    try:
-        # Use the same model as in summarize_content
-        model_name = "models/gemini-1.5-flash"
-        print(f"Attempting to use model for priority calculation: {model_name}")
-        
-        model = genai.GenerativeModel(model_name)
-        
-        # Extract relevant information for the prompt
-        name = assignment.get("name", "Unnamed Assignment")
-        description = assignment.get("description", "")
-        due_date_str = "No due date"
-        days_until_due = None
-        
-        if assignment.get("due_at"):
-            due_date = datetime.fromisoformat(assignment["due_at"].replace("Z", "+00:00"))
-            due_date_str = due_date.strftime("%Y-%m-%d %H:%M")
-            days_until_due = (due_date - datetime.now().astimezone()).days
-        
-        points = assignment.get("points_possible", 0)
-        
-        # Create a prompt for Gemini
-        prompt = f"""
-        Analyze this assignment and assign a priority score from 1-15 (15 being highest priority).
-        
-        Assignment: {name}
-        Due date: {due_date_str}
-        Days until due: {days_until_due}
-        Points: {points}
-        Description: {description[:500]}...
-        
-        Consider factors like:
-        - Urgency based on due date
-        - Importance based on points
-        - Complexity based on description
-        - Time required to complete
-        
-        Return only a single number between 1 and 15.
-        """
-        
-        response = model.generate_content(prompt)
-        
-        # Extract the priority score from the response
-        try:
-            # Try to parse the response as a number
-            priority_text = response.text.strip()
-            # Remove any non-numeric characters
-            priority_text = ''.join(c for c in priority_text if c.isdigit())
-            if priority_text:
-                priority = int(priority_text)
-                # Ensure the priority is within the expected range
-                return max(1, min(15, priority))
-        except ValueError:
-            print(f"Could not parse priority from Gemini response: {response.text}")
-            return None
-            
-    except Exception as e:
-        print(f"Error in calculate_priority_with_gemini: {e}")
-        return None
+def fallback_summarize(content: str) -> str:
+    """Simple fallback summarization when API is unavailable"""
+    # Take the first 200 characters as a simple summary
+    if len(content) <= 200:
+        return content
+    
+    # Find the first period after 100 characters to end the summary naturally
+    cutoff = min(200, len(content))
+    period_pos = content.find('.', 100, cutoff)
+    if period_pos > 0:
+        return content[:period_pos+1] + " [...]"
+    else:
+        return content[:cutoff] + " [...]"
 
 async def summarize_content(content: str) -> str:
     """Summarize content using Gemini API or fallback to simple summarization"""
@@ -251,126 +298,9 @@ async def summarize_content(content: str) -> str:
         print(f"Gemini API error in summarization: {e}")
         return fallback_summarize(content)  # Always use fallback on any error
 
-def fallback_summarize(content: str) -> str:
-    """Simple fallback summarization when API is unavailable"""
-    # Take the first 200 characters as a simple summary
-    if len(content) <= 200:
-        return content
-    
-    # Find the first period after 100 characters to end the summary naturally
-    cutoff = min(200, len(content))
-    period_pos = content.find('.', 100, cutoff)
-    if period_pos > 0:
-        return content[:period_pos+1] + " [...]"
-    else:
-        return content[:cutoff] + " [...]"
-
-# Endpoints
-@app.get("/api/py/health")
-def health_check():
-    return {"status": "ok", "message": "API is running"}
-
-@app.get("/api/py/helloFastApi")
-def hello_fast_api():
-    return {"message": "Hello from FastAPI"}
-
-@app.get("/api/py/courses", response_model=List[Course])
-async def get_courses():
-    """Get list of courses for the authenticated user"""
-    try:
-        async with await get_canvas_client() as client:
-            response = await client.get(f"{CANVAS_API_BASE_URL}/courses?enrollment_state=active")
-            
-            if response.status_code != 200:
-                raise HTTPException(status_code=response.status_code, detail="Failed to fetch courses")
-                
-            courses_data = response.json()
-            return [
-                Course(
-                    id=course["id"],
-                    name=course["name"],
-                    code=course.get("course_code", ""),
-                    start_at=datetime.fromisoformat(course["start_at"].replace("Z", "+00:00")) if course.get("start_at") else None,
-                    end_at=datetime.fromisoformat(course["end_at"].replace("Z", "+00:00")) if course.get("end_at") else None
-                )
-                for course in courses_data
-                if not course.get("access_restricted_by_date", False)
-            ]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching courses: {str(e)}")
-
-@app.get("/api/py/assignments", response_model=List[Assignment])
-async def get_assignments(course_id: Optional[int] = None):
-    """Get assignments with prioritization and summarization"""
-    try:
-        async with await get_canvas_client() as client:
-            # Get courses if course_id not specified
-            if not course_id:
-                courses_response = await client.get(f"{CANVAS_API_BASE_URL}/courses?enrollment_state=active")
-                if courses_response.status_code != 200:
-                    raise HTTPException(status_code=courses_response.status_code, detail="Failed to fetch courses")
-                courses = courses_response.json()
-            else:
-                courses = [{"id": course_id}]
-            
-            all_assignments = []
-            
-            # Get assignments for each course
-            for course in courses:
-                course_id = course["id"]
-                
-                # Get course details
-                course_response = await client.get(f"{CANVAS_API_BASE_URL}/courses/{course_id}")
-                if course_response.status_code != 200:
-                    continue  # Skip if can't get course details
-                course_details = course_response.json()
-                
-                # Get assignments
-                assignments_response = await client.get(
-                    f"{CANVAS_API_BASE_URL}/courses/{course_id}/assignments?include[]=submission"
-                )
-                if assignments_response.status_code != 200:
-                    continue  # Skip if can't get assignments
-                
-                assignments = assignments_response.json()
-                
-                for assignment in assignments:
-                    # Skip completed assignments
-                    submission = assignment.get("submission", {})
-                    if submission and submission.get("workflow_state") == "submitted":
-                        continue
-                    
-                    # Calculate priority
-                    priority = calculate_priority(assignment)
-                    
-                    # Summarize description if available
-                    description = assignment.get("description", "")
-                    summary = await summarize_content(description) if description else ""
-                    
-                    all_assignments.append(
-                        Assignment(
-                            id=assignment["id"],
-                            name=assignment["name"],
-                            description=description,
-                            due_at=datetime.fromisoformat(assignment["due_at"].replace("Z", "+00:00")) if assignment.get("due_at") else None,
-                            points_possible=assignment.get("points_possible"),
-                            course_id=course_id,
-                            course_name=course_details["name"],
-                            priority=priority,
-                            summary=summary
-                        )
-                    )
-            
-            # Sort by priority (descending)
-            all_assignments.sort(key=lambda x: x.priority or 0, reverse=True)
-            return all_assignments
-            
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching assignments: {str(e)}")
-
 @app.get("/api/py/assignment/{assignment_id}/summary")
 async def get_assignment_summary(assignment_id: int, course_id: int):
-    """Get a summary of an assignment description using Gemini API"""
+    """Get summary for a specific assignment"""
     try:
         async with await get_canvas_client() as client:
             response = await client.get(
@@ -406,15 +336,6 @@ async def get_course_analytics(course_id: int):
             
             assignments = assignments_response.json()
             
-            # Get submissions
-            submissions_response = await client.get(
-                f"{CANVAS_API_BASE_URL}/courses/{course_id}/students/submissions"
-            )
-            if submissions_response.status_code != 200:
-                raise HTTPException(status_code=submissions_response.status_code, detail="Failed to fetch submissions")
-            
-            submissions = submissions_response.json()
-            
             # Process data for visualization
             analytics_data = {
                 "assignment_completion": [],
@@ -422,31 +343,62 @@ async def get_course_analytics(course_id: int):
                 "time_spent": []
             }
             
+            # Try to get submissions, but continue even if it fails
+            submissions = []
+            try:
+                submissions_response = await client.get(
+                    f"{CANVAS_API_BASE_URL}/courses/{course_id}/students/submissions"
+                )
+                if submissions_response.status_code == 200:
+                    submissions = submissions_response.json()
+            except Exception as sub_err:
+                print(f"Warning: Could not fetch submissions: {sub_err}")
+                # Continue without submissions data
+            
             # Process assignments and submissions
             for assignment in assignments:
                 assignment_id = assignment["id"]
-                assignment_submissions = [s for s in submissions if s["assignment_id"] == assignment_id]
                 
-                completion_rate = len([s for s in assignment_submissions if s["workflow_state"] == "submitted"]) / max(1, len(assignment_submissions))
-                
-                analytics_data["assignment_completion"].append({
-                    "assignment_name": assignment["name"],
-                    "completion_rate": completion_rate
-                })
-                
-                # Grade distribution
-                grades = [s.get("score", 0) for s in assignment_submissions if s.get("score") is not None]
-                if grades:
-                    analytics_data["grade_distribution"][assignment["name"]] = {
-                        "min": min(grades),
-                        "max": max(grades),
-                        "avg": sum(grades) / len(grades)
-                    }
+                # Only process submissions if we have them
+                if submissions:
+                    try:
+                        assignment_submissions = [s for s in submissions if s.get("assignment_id") == assignment_id]
+                        
+                        completion_rate = len([s for s in assignment_submissions if s.get("workflow_state") == "submitted"]) / max(1, len(assignment_submissions))
+                        
+                        analytics_data["assignment_completion"].append({
+                            "assignment_name": assignment["name"],
+                            "completion_rate": completion_rate
+                        })
+                        
+                        # Grade distribution
+                        grades = [s.get("score", 0) for s in assignment_submissions if s.get("score") is not None]
+                        if grades:
+                            analytics_data["grade_distribution"][assignment["name"]] = {
+                                "min": min(grades),
+                                "max": max(grades),
+                                "avg": sum(grades) / len(grades)
+                            }
+                    except Exception as proc_err:
+                        print(f"Warning: Error processing assignment {assignment_id}: {proc_err}")
+                        # Continue with next assignment
+                else:
+                    # If no submissions data, add placeholder data
+                    analytics_data["assignment_completion"].append({
+                        "assignment_name": assignment["name"],
+                        "completion_rate": 0
+                    })
             
             return analytics_data
             
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching analytics: {str(e)}")
+        print(f"Error in analytics endpoint: {str(e)}")
+        # Return empty data structure instead of error
+        return {
+            "assignment_completion": [],
+            "grade_distribution": {},
+            "time_spent": []
+        }
 
 @app.get("/api/py/course_statistics/{course_id}")
 async def get_course_statistics(course_id: int):
@@ -746,3 +698,36 @@ async def get_study_time_analytics(course_id: int):
     except Exception as e:
         print(f"Error getting study time analytics: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get study time analytics: {str(e)}")
+
+@app.get("/api/py/health")
+def health_check():
+    return {"status": "ok", "message": "API is running"}
+
+@app.get("/api/py/helloFastApi")
+def hello_fast_api():
+    return {"message": "Hello from FastAPI"}
+
+@app.get("/api/py/courses", response_model=List[Course])
+async def get_courses():
+    """Get list of courses for the authenticated user"""
+    try:
+        async with await get_canvas_client() as client:
+            response = await client.get(f"{CANVAS_API_BASE_URL}/courses?enrollment_state=active")
+            
+            if response.status_code != 200:
+                raise HTTPException(status_code=response.status_code, detail="Failed to fetch courses")
+                
+            courses_data = response.json()
+            return [
+                Course(
+                    id=course["id"],
+                    name=course["name"],
+                    code=course.get("course_code", ""),
+                    start_at=datetime.fromisoformat(course["start_at"].replace("Z", "+00:00")) if course.get("start_at") else None,
+                    end_at=datetime.fromisoformat(course["end_at"].replace("Z", "+00:00")) if course.get("end_at") else None
+                )
+                for course in courses_data
+                if not course.get("access_restricted_by_date", False)
+            ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching courses: {str(e)}")

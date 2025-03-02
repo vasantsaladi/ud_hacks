@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import LoadingSpinner from "./LoadingSpinner";
 
 interface AssignmentRecommendationsProps {
@@ -34,110 +34,121 @@ const AssignmentRecommendations: React.FC<AssignmentRecommendationsProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!courseId) return;
+  // Use memoized fetch function to prevent unnecessary re-renders
+  const fetchRecommendations = useCallback(async () => {
+    setLoading(true);
 
-    const fetchRecommendations = async () => {
-      setLoading(true);
-      try {
-        // Fetch assignments for the course
-        const response = await fetch(
-          `/api/py/assignments?course_id=${courseId}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
+    // Add a timeout to prevent hanging forever
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Request timed out")), 5000)
+    );
 
-        if (!response.ok) {
-          throw new Error("Failed to fetch assignments");
+    try {
+      // Fetch assignments for the course with optimized parameters
+      const fetchPromise = fetch(
+        `/api/py/assignments?course_id=${courseId}&skip_summarization=true&limit=20`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
         }
+      );
 
-        const assignments: Assignment[] = await response.json();
+      // Race between fetch and timeout
+      const response = (await Promise.race([
+        fetchPromise,
+        timeoutPromise,
+      ])) as Response;
 
-        // Generate recommendations based on assignments
-        const generatedRecommendations: Recommendation[] = [];
-
-        // Filter assignments with due dates
-        const now = new Date();
-        const assignmentsWithDueDates = assignments.filter((a) => a.due_at);
-
-        // Sort by due date (ascending)
-        const sortedByDueDate = [...assignmentsWithDueDates].sort(
-          (a, b) =>
-            new Date(a.due_at!).getTime() - new Date(b.due_at!).getTime()
-        );
-
-        // Sort by priority (descending)
-        const sortedByPriority = [...assignments].sort(
-          (a, b) => b.priority - a.priority
-        );
-
-        // Recommendation 1: Urgent assignments (due within 3 days)
-        const urgentAssignments = sortedByDueDate
-          .filter(
-            (a) =>
-              a.due_at &&
-              new Date(a.due_at).getTime() - now.getTime() <
-                3 * 24 * 60 * 60 * 1000
-          )
-          .slice(0, 3);
-
-        if (urgentAssignments.length > 0) {
-          generatedRecommendations.push({
-            title: "Urgent Assignments",
-            description:
-              "These assignments are due soon and should be prioritized",
-            assignments: urgentAssignments,
-            icon: "🔥",
-          });
-        }
-
-        // Recommendation 2: High priority assignments
-        const highPriorityAssignments = sortedByPriority
-          .filter((a) => a.priority > 7)
-          .slice(0, 3);
-
-        if (highPriorityAssignments.length > 0) {
-          generatedRecommendations.push({
-            title: "High Impact Assignments",
-            description:
-              "These assignments have the highest impact on your grade",
-            assignments: highPriorityAssignments,
-            icon: "⭐",
-          });
-        }
-
-        // Recommendation 3: Quick wins (low points but easy to complete)
-        const quickWins = assignments
-          .filter((a) => a.points_possible < 10 && a.points_possible > 0)
-          .slice(0, 3);
-
-        if (quickWins.length > 0) {
-          generatedRecommendations.push({
-            title: "Quick Wins",
-            description:
-              "These assignments can be completed quickly for easy points",
-            assignments: quickWins,
-            icon: "✅",
-          });
-        }
-
-        setRecommendations(generatedRecommendations);
-        setLoading(false);
-      } catch (err) {
-        console.error("Error fetching recommendations:", err);
-        setError("Failed to generate assignment recommendations");
-        setLoading(false);
+      if (!response.ok) {
+        throw new Error("Failed to fetch assignments");
       }
-    };
 
-    fetchRecommendations();
+      const assignments: Assignment[] = await response.json();
+
+      // Generate recommendations based on assignments
+      const generatedRecommendations: Recommendation[] = [];
+
+      // Filter assignments with due dates
+      const now = new Date();
+      const assignmentsWithDueDates = assignments.filter((a) => a.due_at);
+
+      // Sort by due date (ascending)
+      const sortedByDueDate = [...assignmentsWithDueDates].sort(
+        (a, b) => new Date(a.due_at!).getTime() - new Date(b.due_at!).getTime()
+      );
+
+      // Sort by priority (descending)
+      const sortedByPriority = [...assignments].sort(
+        (a, b) => b.priority - a.priority
+      );
+
+      // Recommendation 1: Urgent assignments (due within 3 days)
+      const urgentAssignments = sortedByDueDate
+        .filter(
+          (a) =>
+            a.due_at &&
+            new Date(a.due_at).getTime() - now.getTime() <
+              3 * 24 * 60 * 60 * 1000
+        )
+        .slice(0, 3);
+
+      if (urgentAssignments.length > 0) {
+        generatedRecommendations.push({
+          title: "Urgent Assignments",
+          description:
+            "These assignments are due soon and should be prioritized",
+          assignments: urgentAssignments,
+          icon: "🔥",
+        });
+      }
+
+      // Recommendation 2: High priority assignments
+      const highPriorityAssignments = sortedByPriority
+        .filter((a) => a.priority > 7)
+        .slice(0, 3);
+
+      if (highPriorityAssignments.length > 0) {
+        generatedRecommendations.push({
+          title: "High Impact Assignments",
+          description:
+            "These assignments have the highest impact on your grade",
+          assignments: highPriorityAssignments,
+          icon: "⭐",
+        });
+      }
+
+      // Recommendation 3: Quick wins (low points but easy to complete)
+      const quickWins = assignments
+        .filter((a) => a.points_possible < 10 && a.points_possible > 0)
+        .slice(0, 3);
+
+      if (quickWins.length > 0) {
+        generatedRecommendations.push({
+          title: "Quick Wins",
+          description:
+            "These assignments can be completed quickly for easy points",
+          assignments: quickWins,
+          icon: "✅",
+        });
+      }
+
+      setRecommendations(generatedRecommendations);
+      setLoading(false);
+    } catch (err) {
+      console.error("Error fetching recommendations:", err);
+      setError("Failed to generate assignment recommendations");
+      setLoading(false);
+    }
   }, [courseId, token]);
 
+  useEffect(() => {
+    if (!courseId) return;
+    fetchRecommendations();
+  }, [courseId, fetchRecommendations]);
+
   if (loading) {
-    return <LoadingSpinner message="Generating recommendations..." />;
+    return <LoadingSpinner message="Loading recommendations..." />;
   }
 
   if (error) {
