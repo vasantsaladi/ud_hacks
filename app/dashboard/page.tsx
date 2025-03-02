@@ -7,6 +7,11 @@ import AssignmentCard from "@/app/components/AssignmentCard";
 import DashboardHeader from "@/app/components/DashboardHeader";
 import FilterBar from "@/app/components/FilterBar";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
+import Link from "next/link";
+
+// Define the assignments limit constant
+const ASSIGNMENTS_LIMIT = 20;
+
 // Lazy load the AssignmentRecommendations component
 const AssignmentRecommendations = lazy(
   () => import("@/app/components/AssignmentRecommendations")
@@ -74,72 +79,50 @@ export default function Dashboard() {
 
     // Fetch assignments
     const fetchAssignments = async () => {
+      setLoading(true);
       try {
-        // Add a timeout to prevent hanging forever
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("Request timed out")), 5000)
-        );
-
-        const fetchPromise = fetch(
-          `/api/py/assignments?skip_summarization=true&limit=15`,
+        const response = await fetch(
+          `/api/py/assignments?skip_summarization=false&limit=${ASSIGNMENTS_LIMIT}`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
             },
           }
         );
-
-        // Race between fetch and timeout
-        const response = (await Promise.race([
-          fetchPromise,
-          timeoutPromise,
-        ])) as Response;
-
         if (!response.ok) {
           throw new Error("Failed to fetch assignments");
         }
         const data = await response.json();
         setAssignments(data);
         setLoading(false);
-      } catch (err) {
-        console.error("Error fetching assignments:", err);
+      } catch (error) {
+        console.error("Error fetching assignments:", error);
         setError("Failed to load assignments");
         setLoading(false);
       }
     };
 
-    // Fetch courses and assignments in parallel
-    Promise.all([fetchCourses(), fetchAssignments()]).catch((err) => {
-      console.error("Error in parallel fetching:", err);
-      setLoading(false);
-    });
+    fetchCourses();
+    fetchAssignments();
   }, [isAuthenticated, router, token]);
-
-  // Effect to handle recommendations loading state
-  useEffect(() => {
-    if (!loading) {
-      // Set a timeout to hide the recommendations loading state after assignments are loaded
-      const timer = setTimeout(() => {
-        setRecommendationsLoading(false);
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [loading]);
 
   // Filter and sort assignments
   const filteredAssignments = assignments
     .filter((assignment) => {
-      // Filter by course
+      // Filter by course if selected
       if (selectedCourse && assignment.course_id !== selectedCourse) {
         return false;
       }
 
       // Filter by search query
-      if (
-        searchQuery &&
-        !assignment.name.toLowerCase().includes(searchQuery.toLowerCase())
-      ) {
-        return false;
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        return (
+          assignment.name.toLowerCase().includes(query) ||
+          assignment.course_name.toLowerCase().includes(query) ||
+          (assignment.description &&
+            assignment.description.toLowerCase().includes(query))
+        );
       }
 
       return true;
@@ -149,67 +132,51 @@ export default function Dashboard() {
       if (sortBy === "priority") {
         return (b.priority || 0) - (a.priority || 0);
       } else if (sortBy === "due_date") {
-        if (!a.due_at) return 1;
-        if (!b.due_at) return -1;
-        return new Date(a.due_at).getTime() - new Date(b.due_at).getTime();
-      } else if (sortBy === "points") {
+        const dateA = a.due_at ? new Date(a.due_at).getTime() : Infinity;
+        const dateB = b.due_at ? new Date(b.due_at).getTime() : Infinity;
+        return dateA - dateB;
+      } else {
+        // Sort by points
         return (b.points_possible || 0) - (a.points_possible || 0);
       }
-      return 0;
     });
 
-  if (loading) {
-    return <LoadingSpinner message="Loading your assignments..." />;
-  }
-
-  if (error) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center p-24">
-        <div
-          className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative"
-          role="alert"
-        >
-          <strong className="font-bold">Error: </strong>
-          <span className="block sm:inline">{error}</span>
-        </div>
-        <button
-          onClick={() => router.push("/")}
-          className="mt-4 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
-        >
-          Return to Home
-        </button>
-      </div>
-    );
-  }
+  // Group assignments by course
+  const assignmentsByCourse = filteredAssignments.reduce((acc, assignment) => {
+    const courseId = assignment.course_id;
+    if (!acc[courseId]) {
+      acc[courseId] = [];
+    }
+    acc[courseId].push(assignment);
+    return acc;
+  }, {} as Record<number, Assignment[]>);
 
   return (
     <div className="min-h-screen bg-gray-50">
       <DashboardHeader />
 
-      <main className="container mx-auto px-4 py-8">
-        <h1 className="text-3xl font-bold text-gray-800 mb-6">
-          Assignment Dashboard
-        </h1>
+      <div className="container mx-auto px-4 py-2">
+        <div className="flex justify-between items-center mb-4">
+          <h1 className="text-2xl font-bold text-gray-900">Canvas Dashboard</h1>
+          <div className="text-gray-600">Showing your favorite courses</div>
+          <Link
+            href="/profile"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors"
+          >
+            Profile
+          </Link>
+        </div>
+      </div>
 
-        {/* Assignment Recommendations with Suspense */}
-        <div className="mb-8">
-          {recommendationsLoading ? (
-            <div className="bg-white p-6 rounded-lg shadow">
-              <LoadingSpinner message="Loading recommendations..." />
-            </div>
-          ) : (
-            <Suspense
-              fallback={
-                <div className="bg-white p-6 rounded-lg shadow">
-                  <LoadingSpinner message="Loading recommendations..." />
-                </div>
-              }
-            >
-              <AssignmentRecommendations
-                courseId={selectedCourse || 0}
-                token={token}
-              />
-            </Suspense>
+      <main className="container mx-auto px-4 py-6">
+        <div className="flex justify-between items-center mb-8">
+          <h2 className="text-3xl font-bold text-gray-800">
+            Assignment Dashboard
+          </h2>
+          {!loading && (
+            <span className="text-gray-500">
+              {filteredAssignments.length} assignments found
+            </span>
           )}
         </div>
 
@@ -223,25 +190,78 @@ export default function Dashboard() {
           setSearchQuery={setSearchQuery}
         />
 
-        <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredAssignments.length > 0 ? (
-            filteredAssignments.map((assignment) => (
-              <AssignmentCard
-                key={assignment.id}
-                assignment={assignment}
-                token={token}
-              />
-            ))
-          ) : (
-            <div className="col-span-full text-center py-12">
-              <h3 className="text-xl font-semibold text-gray-700">
-                No assignments found
-              </h3>
-              <p className="text-gray-500 mt-2">
-                Try adjusting your filters or check back later
-              </p>
+        {loading ? (
+          <div className="flex justify-center items-center h-64">
+            <LoadingSpinner size="large" />
+          </div>
+        ) : error ? (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
+            {error}
+          </div>
+        ) : Object.keys(assignmentsByCourse).length === 0 ? (
+          <div className="bg-white rounded-lg shadow-sm p-6 text-center">
+            <div className="flex justify-center mb-4">
+              <svg
+                className="w-16 h-16 text-gray-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                />
+              </svg>
             </div>
-          )}
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              No assignments found
+            </h3>
+            <p className="text-gray-600">
+              {selectedCourse
+                ? "No assignments found for this favorite course. Check back later."
+                : "No assignments found for your favorite courses. Try starring more courses in Canvas."}
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-8">
+            {Object.entries(assignmentsByCourse).map(
+              ([courseId, courseAssignments]) => (
+                <div
+                  key={courseId}
+                  className="bg-white rounded-lg shadow-sm p-6"
+                >
+                  <h3 className="text-xl font-semibold text-gray-800 mb-4">
+                    {courseAssignments[0].course_name}
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {courseAssignments.map((assignment) => (
+                      <AssignmentCard
+                        key={assignment.id}
+                        assignment={assignment}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )
+            )}
+          </div>
+        )}
+
+        <div className="mt-12 bg-white rounded-lg shadow-sm p-6">
+          <Suspense
+            fallback={
+              <div className="flex justify-center items-center h-64">
+                <LoadingSpinner size="large" />
+              </div>
+            }
+          >
+            <AssignmentRecommendations
+              courseId={selectedCourse || 0}
+              token={token || ""}
+            />
+          </Suspense>
         </div>
       </main>
     </div>

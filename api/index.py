@@ -130,7 +130,7 @@ CACHE_TTL_SECONDS = 300  # 5 minutes cache TTL
 @app.get("/api/py/assignments", response_model=List[Assignment])
 async def get_assignments(
     course_id: Optional[int] = None,
-    skip_summarization: bool = True,
+    skip_summarization: bool = False,
     limit: int = 100,
     offset: int = 0
 ):
@@ -229,14 +229,16 @@ def calculate_basic_priority(assignment: Dict[str, Any]) -> int:
         due_date = datetime.fromisoformat(assignment["due_at"].replace("Z", "+00:00"))
         days_until_due = (due_date - datetime.now().astimezone()).days
         
-        if days_until_due < 1:
-            priority += 10  # Due very soon
-        elif days_until_due < 3:
-            priority += 8   # Due soon
-        elif days_until_due < 7:
-            priority += 5   # Due this week
-        else:
-            priority += 2   # Due later
+        if days_until_due < 0:  # Overdue
+            priority += 12
+        elif days_until_due < 1:  # Due today
+            priority += 10
+        elif days_until_due < 3:  # Due soon
+            priority += 8
+        elif days_until_due < 7:  # Due this week
+            priority += 5
+        else:  # Due later
+            priority += 2
     
     # Points factor - higher points get higher priority
     points = assignment.get("points_possible", 0)
@@ -244,8 +246,10 @@ def calculate_basic_priority(assignment: Dict[str, Any]) -> int:
         if points > 100:
             priority += 5
         elif points > 50:
-            priority += 3
+            priority += 4
         elif points > 20:
+            priority += 3
+        elif points > 10:
             priority += 2
         else:
             priority += 1
@@ -271,11 +275,7 @@ async def summarize_content(content: str) -> str:
     if not content or len(content) < 100:
         return content
     
-    # Use fallback summarization by default to avoid API errors
-    # Only try Gemini if explicitly enabled
-    if os.getenv("USE_GEMINI_SUMMARIZATION", "false").lower() != "true":
-        return fallback_summarize(content)
-    
+    # Enable Gemini summarization by default
     try:
         # Use the same model as in gemini_endpoint
         model_name = "models/gemini-1.5-flash"
@@ -709,13 +709,14 @@ def hello_fast_api():
 
 @app.get("/api/py/courses", response_model=List[Course])
 async def get_courses():
-    """Get list of courses for the authenticated user"""
+    """Get list of favorite courses for the authenticated user"""
     try:
         async with await get_canvas_client() as client:
-            response = await client.get(f"{CANVAS_API_BASE_URL}/courses?enrollment_state=active")
+            # Change the endpoint to fetch only favorite courses
+            response = await client.get(f"{CANVAS_API_BASE_URL}/users/self/favorites/courses")
             
             if response.status_code != 200:
-                raise HTTPException(status_code=response.status_code, detail="Failed to fetch courses")
+                raise HTTPException(status_code=response.status_code, detail="Failed to fetch favorite courses")
                 
             courses_data = response.json()
             return [
@@ -730,4 +731,4 @@ async def get_courses():
                 if not course.get("access_restricted_by_date", False)
             ]
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching courses: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching favorite courses: {str(e)}")

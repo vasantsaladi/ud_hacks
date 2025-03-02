@@ -24,6 +24,7 @@ interface Recommendation {
   description: string;
   assignments: Assignment[];
   icon: string;
+  color: string;
 }
 
 const AssignmentRecommendations: React.FC<AssignmentRecommendationsProps> = ({
@@ -40,13 +41,13 @@ const AssignmentRecommendations: React.FC<AssignmentRecommendationsProps> = ({
 
     // Add a timeout to prevent hanging forever
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("Request timed out")), 3000)
+      setTimeout(() => reject(new Error("Request timed out")), 5000)
     );
 
     try {
       // Fetch assignments for the course with optimized parameters
       const fetchPromise = fetch(
-        `/api/py/assignments?course_id=${courseId}&skip_summarization=true&limit=10`,
+        `/api/py/assignments?course_id=${courseId}&skip_summarization=true&limit=20`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -81,41 +82,68 @@ const AssignmentRecommendations: React.FC<AssignmentRecommendationsProps> = ({
     const generatedRecommendations: Recommendation[] = [];
     const now = new Date();
 
-    // Simple filtering for urgent assignments (due within 3 days)
-    const urgentAssignments = assignments
+    // Create a copy of assignments to work with
+    const assignmentsCopy = [...assignments];
+
+    // Track which assignments have been used
+    const usedAssignmentIds = new Set<number>();
+
+    // Urgent assignments (due within 3 days)
+    const urgentAssignments = assignmentsCopy
       .filter(
         (a) =>
           a.due_at &&
           new Date(a.due_at).getTime() - now.getTime() < 3 * 24 * 60 * 60 * 1000
       )
+      .sort((a, b) => {
+        // Sort by due date (ascending)
+        if (!a.due_at) return 1;
+        if (!b.due_at) return -1;
+        return new Date(a.due_at).getTime() - new Date(b.due_at).getTime();
+      })
       .slice(0, 3);
 
     if (urgentAssignments.length > 0) {
+      // Mark these assignments as used
+      urgentAssignments.forEach((a) => usedAssignmentIds.add(a.id));
+
       generatedRecommendations.push({
         title: "Urgent Assignments",
         description: "These assignments are due soon and should be prioritized",
         assignments: urgentAssignments,
         icon: "🔥",
+        color: "red",
       });
     }
 
-    // High priority assignments
-    const highPriorityAssignments = [...assignments]
-      .sort((a, b) => (b.priority || 0) - (a.priority || 0))
+    // High impact assignments (high points and not already in urgent)
+    const highImpactAssignments = assignmentsCopy
+      .filter((a) => !usedAssignmentIds.has(a.id) && a.points_possible > 10)
+      .sort((a, b) => (b.points_possible || 0) - (a.points_possible || 0))
       .slice(0, 3);
 
-    if (highPriorityAssignments.length > 0) {
+    if (highImpactAssignments.length > 0) {
+      // Mark these assignments as used
+      highImpactAssignments.forEach((a) => usedAssignmentIds.add(a.id));
+
       generatedRecommendations.push({
         title: "High Impact Assignments",
         description: "These assignments have the highest impact on your grade",
-        assignments: highPriorityAssignments,
+        assignments: highImpactAssignments,
         icon: "⭐",
+        color: "amber",
       });
     }
 
-    // Quick wins (low points but easy to complete)
-    const quickWins = assignments
-      .filter((a) => a.points_possible > 0 && a.points_possible < 10)
+    // Quick wins (low points, not already used, and can be completed quickly)
+    const quickWins = assignmentsCopy
+      .filter(
+        (a) =>
+          !usedAssignmentIds.has(a.id) &&
+          a.points_possible > 0 &&
+          a.points_possible <= 10
+      )
+      .sort((a, b) => (a.points_possible || 0) - (b.points_possible || 0))
       .slice(0, 3);
 
     if (quickWins.length > 0) {
@@ -125,6 +153,7 @@ const AssignmentRecommendations: React.FC<AssignmentRecommendationsProps> = ({
           "These assignments can be completed quickly for easy points",
         assignments: quickWins,
         icon: "✅",
+        color: "green",
       });
     }
 
@@ -136,84 +165,257 @@ const AssignmentRecommendations: React.FC<AssignmentRecommendationsProps> = ({
     fetchAssignments();
   }, [courseId, fetchAssignments]);
 
+  // Format due date for display
+  const formatDueDate = (dueDate: string | null) => {
+    if (!dueDate) return "No due date";
+    const date = new Date(dueDate);
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  };
+
+  // Calculate days remaining until due date
+  const getDaysRemaining = (dueDate: string | null) => {
+    if (!dueDate) return null;
+
+    const now = new Date();
+    const due = new Date(dueDate);
+    const diffTime = due.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    return diffDays;
+  };
+
+  // Get CSS classes for recommendation color
+  const getColorClasses = (color: string) => {
+    switch (color) {
+      case "red":
+        return {
+          bg: "bg-red-50",
+          border: "border-red-100",
+          icon: "bg-red-100 text-red-600",
+          title: "text-red-800",
+        };
+      case "amber":
+        return {
+          bg: "bg-amber-50",
+          border: "border-amber-100",
+          icon: "bg-amber-100 text-amber-600",
+          title: "text-amber-800",
+        };
+      case "green":
+        return {
+          bg: "bg-green-50",
+          border: "border-green-100",
+          icon: "bg-green-100 text-green-600",
+          title: "text-green-800",
+        };
+      default:
+        return {
+          bg: "bg-blue-50",
+          border: "border-blue-100",
+          icon: "bg-blue-100 text-blue-600",
+          title: "text-blue-800",
+        };
+    }
+  };
+
   if (loading) {
-    return <LoadingSpinner message="Loading recommendations..." />;
+    return (
+      <div className="p-6 bg-white rounded-lg shadow-sm">
+        <div className="flex justify-center items-center py-12">
+          <LoadingSpinner message="Generating smart recommendations..." />
+        </div>
+      </div>
+    );
   }
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
-        <p className="font-medium">Error: {error}</p>
+      <div className="p-6 bg-white rounded-lg shadow-sm">
+        <div className="text-center py-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-red-100 mb-4">
+            <svg
+              className="w-8 h-8 text-red-600"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              ></path>
+            </svg>
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            Recommendation Error
+          </h3>
+          <p className="text-gray-500">{error}</p>
+        </div>
       </div>
     );
   }
 
   if (recommendations.length === 0) {
     return (
-      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-gray-700">
-        <p className="font-medium">
-          No recommendations available for this course.
-        </p>
+      <div className="p-6 bg-white rounded-lg shadow-sm">
+        <div className="text-center py-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-100 mb-4">
+            <svg
+              className="w-8 h-8 text-blue-600"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              ></path>
+            </svg>
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            No Recommendations
+          </h3>
+          <p className="text-gray-500">
+            We don't have any recommendations for you at this time.
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-xl font-semibold text-gray-800">
-        Smart Assignment Recommendations
-      </h2>
-      <div className="space-y-6">
-        {recommendations.map((recommendation, index) => (
-          <div key={index} className="bg-white p-6 rounded-lg shadow">
-            <div className="flex items-center mb-4">
-              <div className="text-2xl mr-3">{recommendation.icon}</div>
-              <div>
-                <h3 className="font-medium text-gray-800">
-                  {recommendation.title}
-                </h3>
-                <p className="text-sm text-gray-600">
+    <div className="bg-white rounded-lg shadow-sm">
+      <div className="p-6">
+        <div className="flex items-center mb-6">
+          <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center mr-3">
+            <svg
+              className="w-6 h-6 text-blue-600"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+              ></path>
+            </svg>
+          </div>
+          <h2 className="text-xl font-semibold text-gray-800">
+            Smart Assignment Recommendations
+          </h2>
+        </div>
+
+        {recommendations.map((recommendation, index) => {
+          const colorClasses = getColorClasses(recommendation.color);
+
+          return (
+            <div
+              key={index}
+              className={`mb-6 rounded-lg overflow-hidden ${colorClasses.bg} ${colorClasses.border} border`}
+            >
+              <div className="p-4">
+                <div className="flex items-center mb-4">
+                  <div
+                    className={`w-8 h-8 rounded-full ${colorClasses.icon} flex items-center justify-center mr-3 text-lg`}
+                  >
+                    {recommendation.icon}
+                  </div>
+                  <h3 className={`text-lg font-semibold ${colorClasses.title}`}>
+                    {recommendation.title}
+                  </h3>
+                </div>
+
+                <p className="text-gray-600 text-sm mb-4">
                   {recommendation.description}
                 </p>
+
+                <div className="space-y-3">
+                  {recommendation.assignments.map((assignment) => {
+                    const daysRemaining = getDaysRemaining(assignment.due_at);
+                    let dueLabel = "";
+                    let dueClass = "";
+
+                    if (daysRemaining !== null) {
+                      if (daysRemaining < 0) {
+                        dueLabel = "Overdue";
+                        dueClass = "text-red-600 font-medium";
+                      } else if (daysRemaining === 0) {
+                        dueLabel = "Due today";
+                        dueClass = "text-orange-600 font-medium";
+                      } else if (daysRemaining === 1) {
+                        dueLabel = "Due tomorrow";
+                        dueClass = "text-orange-600 font-medium";
+                      } else if (daysRemaining <= 3) {
+                        dueLabel = `${daysRemaining} days left`;
+                        dueClass = "text-orange-600 font-medium";
+                      } else {
+                        dueLabel = `${daysRemaining} days left`;
+                        dueClass = "text-green-600 font-medium";
+                      }
+                    }
+
+                    return (
+                      <div
+                        key={assignment.id}
+                        className="bg-white border border-gray-200 rounded-md p-3 hover:bg-gray-50 transition-colors"
+                      >
+                        <div className="flex flex-col">
+                          <div className="flex justify-between items-start mb-2">
+                            <h4 className="font-medium text-gray-800 line-clamp-1">
+                              {assignment.name}
+                            </h4>
+                            <span className="text-xs font-medium bg-blue-100 text-blue-800 py-1 px-2 rounded ml-2 whitespace-nowrap">
+                              {assignment.points_possible} pts
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between text-xs">
+                            <div className="flex items-center text-gray-500">
+                              <svg
+                                className="h-3 w-3 mr-1"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth="2"
+                                  d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                                />
+                              </svg>
+                              {formatDueDate(assignment.due_at)}
+                            </div>
+
+                            {dueLabel && (
+                              <span className={`text-xs ${dueClass}`}>
+                                {dueLabel}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
-
-            <div className="space-y-3">
-              {recommendation.assignments.map((assignment) => (
-                <div
-                  key={assignment.id}
-                  className="border border-gray-200 rounded-md p-3 hover:bg-gray-50 transition-colors"
-                >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h4 className="font-medium text-gray-800">
-                        {assignment.name}
-                      </h4>
-                      {assignment.due_at && (
-                        <p className="text-sm text-gray-500">
-                          Due:{" "}
-                          {new Date(assignment.due_at).toLocaleDateString()} at{" "}
-                          {new Date(assignment.due_at).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex items-center">
-                      <span className="text-sm font-medium bg-blue-100 text-blue-800 py-1 px-2 rounded">
-                        {assignment.points_possible} pts
-                      </span>
-                      <span className="ml-2 text-sm font-medium bg-purple-100 text-purple-800 py-1 px-2 rounded">
-                        Priority: {assignment.priority.toFixed(1)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
