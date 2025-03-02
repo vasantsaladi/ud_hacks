@@ -11,11 +11,14 @@ import asyncio
 from canvasapi import Canvas
 import time
 from functools import lru_cache
+from datetime import datetime, timezone
 
 # Load environment variables from both root and api directories
 load_dotenv()  # Load from root .env file
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))  # Load from api/.env file
 
+# Create a full datetime object with timezone information
+today = datetime.now(timezone.utc)
 # Debug: Print API key (partially masked)
 api_key = os.getenv("GEMINI_API_KEY", "")
 if api_key:
@@ -65,6 +68,7 @@ class Assignment(BaseModel):
     course_name: str
     priority: Optional[int] = None
     summary: Optional[str] = None
+    bucket: Optional[str] = "upcoming"  # Add bucket field with default value
 
 class Course(BaseModel):
     id: int
@@ -184,79 +188,54 @@ async def get_assignments(
                 courses = [{"id": course_id}]
             
             all_assignments = []
+            courses_with_assignments = set()  # Track which courses have assignments
             
             # Get assignments for each course
             for course in courses:
                 course_id = course["id"]
                 
-                try:
-                    # Get course details and assignments in parallel
-                    course_task = client.get(f"{CANVAS_API_BASE_URL}/courses/{course_id}")
-                    assignments_task = client.get(
-                        f"{CANVAS_API_BASE_URL}/courses/{course_id}/assignments?include[]=submission"
-                    )
+                # Get course details and assignments in parallel
+                course_task = client.get(f"{CANVAS_API_BASE_URL}/courses/{course_id}")
+                assignments_task = client.get(
+                    f"{CANVAS_API_BASE_URL}/courses/{course_id}/assignments?include[]=submission"
+                )
+                
+                course_response, assignments_response = await asyncio.gather(course_task, assignments_task)
+                
+                if course_response.status_code != 200 or assignments_response.status_code != 200:
+                    continue  # Skip if can't get course details or assignments
+                
+                course_details = course_response.json()
+                assignments = assignments_response.json()
+                
+                for assignment in assignments:
+                    # Skip completed assignments
+                    submission = assignment.get("submission", {})
+                    if submission and submission.get("workflow_state") == "submitted":
+                        continue
                     
-                    course_response, assignments_response = await asyncio.gather(course_task, assignments_task)
+                    # Calculate priority (simplified)
+                    priority = calculate_basic_priority(assignment)
                     
-                    if course_response.status_code != 200 or assignments_response.status_code != 200:
-                        print(f"Error fetching course {course_id} or its assignments: {course_response.status_code}, {assignments_response.status_code}")
-                        continue  # Skip if can't get course details or assignments
+                    # Only summarize if explicitly requested
+                    description = assignment.get("description", "")
+                    summary = ""
+                    if not skip_summarization and description:
+                        summary = fallback_summarize(description)  # Use fast fallback by default
                     
-                    course_details = course_response.json()
-                    assignments = assignments_response.json()
-                    
-                    for assignment in assignments:
-                        # Skip completed assignments - improved to check for various completion states
-                        submission = assignment.get("submission", {})
-                        
-                        # Skip if the assignment is submitted, graded, or has a score
-                        if submission:
-                            workflow_state = submission.get("workflow_state", "")
-                            has_grade = submission.get("grade") is not None
-                            has_score = submission.get("score") is not None
-                            
-                            # Skip if the assignment is submitted, graded, or has a score
-                            if (workflow_state in ["submitted", "graded", "complete"] or 
-                                has_grade or has_score):
-                                continue
-                        
-                        # Calculate priority (simplified)
-                        priority = calculate_basic_priority(assignment)
-                        
-                        # Only summarize if explicitly requested
-                        description = assignment.get("description", "")
-                        summary = ""
-                        if not skip_summarization and description:
-                            try:
-                                summary = fallback_summarize(description)  # Use fast fallback by default
-                            except Exception as e:
-                                print(f"Error summarizing assignment {assignment['id']}: {str(e)}")
-                                summary = "Error loading summary"
-                        
-                        # Handle missing due dates gracefully
-                        due_at = None
-                        if assignment.get("due_at"):
-                            try:
-                                due_at = datetime.fromisoformat(assignment["due_at"].replace("Z", "+00:00"))
-                            except Exception as e:
-                                print(f"Error parsing due date for assignment {assignment['id']}: {str(e)}")
-                        
-                        all_assignments.append(
-                            Assignment(
-                                id=assignment["id"],
-                                name=assignment["name"],
-                                description=description,
-                                due_at=due_at,
-                                points_possible=assignment.get("points_possible"),
-                                course_id=course_id,
-                                course_name=course_details["name"],
-                                priority=priority,
-                                summary=summary
-                            )
+                    all_assignments.append(
+                        Assignment(
+                            id=assignment["id"],
+                            name=assignment["name"],
+                            description=description,
+                            due_at=datetime.fromisoformat(assignment["due_at"].replace("Z", "+00:00")) if assignment.get("due_at") else None,
+                            points_possible=assignment.get("points_possible"),
+                            course_id=course_id,
+                            course_name=course_details["name"],
+                            priority=priority,
+                            summary=summary
                         )
-                except Exception as e:
-                    print(f"Error processing course {course_id}: {str(e)}")
-                    continue  # Skip this course on any error
+                    )
             
             # Sort by priority (descending)
             all_assignments.sort(key=lambda x: x.priority or 0, reverse=True)
