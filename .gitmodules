@@ -1,0 +1,3 @@
+[submodule "smallballoon"]
+	path = smallballoon
+	url = https://github.com/fwcd/smallballoon.git
