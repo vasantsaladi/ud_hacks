@@ -1,5 +1,14 @@
 import { NextResponse } from "next/server";
-import smalltalkBridge from "../../../smalltalk_code/smalltalk_bridge";
+
+// Try to import the real bridge, fall back to mock if it fails
+let smalltalkBridge;
+try {
+  smalltalkBridge = require("../../../smalltalk_code/smalltalk_bridge");
+  console.log("Using real Smalltalk bridge");
+} catch (error) {
+  console.log("SmallBalloon not available, using mock bridge");
+  smalltalkBridge = require("../../../smalltalk_code/smalltalk_bridge_mock");
+}
 
 /**
  * GET handler for /api/smalltalk
