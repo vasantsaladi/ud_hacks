@@ -1,5 +1,6 @@
-from fastapi import FastAPI, HTTPException, Depends, Query
+from fastapi import FastAPI, HTTPException, Depends, Query, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import httpx
@@ -12,6 +13,9 @@ from canvasapi import Canvas
 import time
 from functools import lru_cache
 from datetime import datetime, timezone
+import aiofiles
+from pathlib import Path
+import shutil
 
 # Load environment variables from both root and api directories
 load_dotenv()  # Load from root .env file
@@ -34,6 +38,10 @@ try:
 except Exception as e:
     print(f"Error configuring Gemini API: {e}")
 
+# Create uploads directory if it doesn't exist
+UPLOAD_DIR = Path("uploads").absolute()
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
 # Create FastAPI instance with custom docs and openapi url
 app = FastAPI(
     title="Canvas Assistant API",
@@ -51,6 +59,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount the uploads directory after ensuring it exists
+app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
 # Canvas API base URL
 CANVAS_API_BASE_URL = "https://canvas.instructure.com/api/v1"
@@ -114,6 +125,18 @@ class StudyPattern(BaseModel):
 class StudyTimeAnalytics(BaseModel):
     study_sessions: List[StudyTimeData]
     study_pattern: StudyPattern
+
+# File upload and analysis models
+class FileUploadResponse(BaseModel):
+    filename: str
+    file_url: str
+    file_type: str
+    size: int
+
+class FileAnalysis(BaseModel):
+    text: str
+    file_type: str
+    analysis: str
 
 # Helper functions
 async def get_canvas_client():
@@ -811,3 +834,132 @@ async def get_courses():
             ]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching favorite courses: {str(e)}")
+
+@app.post("/api/py/upload", response_model=FileUploadResponse)
+async def upload_file(file: UploadFile = File(...)):
+    """
+    Handle file uploads for the chat interface.
+    Supports images (JPEG, PNG, GIF) and PDFs.
+    """
+    try:
+        # Validate file type
+        allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'application/pdf']
+        if file.content_type not in allowed_types:
+            raise HTTPException(
+                status_code=400,
+                detail="File type not allowed. Please upload an image (JPEG, PNG, GIF) or PDF file."
+            )
+        
+        # Validate file size (5MB limit)
+        contents = await file.read()
+        size = len(contents)
+        max_size = 5 * 1024 * 1024  # 5MB
+        
+        if size > max_size:
+            raise HTTPException(
+                status_code=400,
+                detail="File size too large. Maximum size is 5MB."
+            )
+        
+        # Create a unique filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        original_filename = file.filename.replace(" ", "_")
+        unique_filename = f"{timestamp}_{original_filename}"
+        file_path = UPLOAD_DIR / unique_filename
+        
+        # Save the file
+        async with aiofiles.open(file_path, 'wb') as out_file:
+            await out_file.write(contents)
+        
+        # Generate file URL (in a real production environment, this would be a CDN URL)
+        file_url = f"/uploads/{unique_filename}"
+        
+        return FileUploadResponse(
+            filename=unique_filename,
+            file_url=file_url,
+            file_type=file.content_type,
+            size=size
+        )
+        
+    except Exception as e:
+        # Clean up any partially uploaded file
+        if 'file_path' in locals():
+            try:
+                os.remove(file_path)
+            except:
+                pass
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/py/analyze", response_model=FileAnalysis)
+async def analyze_file(file_url: str):
+    """
+    Analyze an uploaded file and provide insights.
+    Supports images (using OCR) and PDFs (text extraction).
+    """
+    try:
+        # Get the file path from the URL
+        file_name = file_url.split("/")[-1]
+        file_path = UPLOAD_DIR / file_name
+        
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        # Determine file type
+        file_type = ""
+        text_content = ""
+        
+        # Read file content based on type
+        if file_path.suffix.lower() in ['.jpg', '.jpeg', '.png', '.gif']:
+            try:
+                import pytesseract
+                from PIL import Image
+                
+                # Extract text from image using OCR
+                image = Image.open(file_path)
+                text_content = pytesseract.image_to_string(image)
+                file_type = "image"
+            except ImportError:
+                text_content = "OCR functionality not available. Please install pytesseract."
+                
+        elif file_path.suffix.lower() == '.pdf':
+            try:
+                import PyPDF2
+                
+                # Extract text from PDF
+                with open(file_path, 'rb') as file:
+                    pdf_reader = PyPDF2.PdfReader(file)
+                    text_content = ""
+                    for page in pdf_reader.pages:
+                        text_content += page.extract_text() + "\n"
+                file_type = "pdf"
+            except ImportError:
+                text_content = "PDF extraction functionality not available. Please install PyPDF2."
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported file type")
+        
+        # Generate analysis using Gemini
+        analysis_prompt = f"""Analyze the following text extracted from a {file_type} file:
+
+{text_content}
+
+Provide a concise analysis including:
+1. Main topics or themes
+2. Key points or information
+3. Any relevant academic or educational context
+4. Potential relevance to coursework or assignments
+
+Keep the analysis focused and highlight the most important aspects."""
+
+        model = genai.GenerativeModel("models/gemini-1.5-flash")
+        response = model.generate_content(analysis_prompt)
+        
+        analysis = response.text if hasattr(response, 'text') else str(response)
+        
+        return FileAnalysis(
+            text=text_content,
+            file_type=file_type,
+            analysis=analysis
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error analyzing file: {str(e)}")
