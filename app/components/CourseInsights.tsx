@@ -52,7 +52,8 @@ const CourseInsights: React.FC<CourseInsightsProps> = ({ courseId, token }) => {
 
   // Generate course-specific mock data based on courseId
   const generateCourseSpecificMockData = (
-    courseId: number
+    courseId: number,
+    courseName?: string
   ): CourseStatistics => {
     // Use courseId to create deterministic but different values for each course
     const seed = courseId % 100;
@@ -64,9 +65,13 @@ const CourseInsights: React.FC<CourseInsightsProps> = ({ courseId, token }) => {
     const gradePercentage = 30 + (seed % 70); // 30-99%
     const pastDueAssignments = seed % 3; // 0-2 past due assignments
 
+    // Get course name from the courses list if available
+    const displayName = courseName || `Course ${courseId}`;
+    const courseCode = courseName?.split(" ")[0] || `CS${100 + seed}`;
+
     return {
-      course_name: `Course ${courseId}`,
-      course_code: `CS${100 + seed}`,
+      course_name: displayName,
+      course_code: courseCode,
       total_assignments: totalAssignments,
       completed_assignments: completedAssignments,
       completion_percentage: completionPercentage,
@@ -98,10 +103,16 @@ const CourseInsights: React.FC<CourseInsightsProps> = ({ courseId, token }) => {
   const isDefaultMockData = (stats: CourseStatistics): boolean => {
     // Check for telltale signs of the default mock data
     return (
-      stats.completion_percentage === 40 &&
-      stats.grade_percentage === 35 &&
-      stats.total_assignments === 10 &&
-      stats.completed_assignments === 4
+      // Only consider it mock data if it has the exact default values AND an unknown course name
+      (stats.completion_percentage === 40 &&
+        stats.grade_percentage === 35 &&
+        stats.total_assignments === 10 &&
+        stats.completed_assignments === 4 &&
+        (stats.course_name === "Unknown Course" ||
+          stats.course_code === "Unknown")) ||
+      // Or if it's clearly a placeholder course ID instead of a name
+      (stats.course_name.includes("93420000000") &&
+        !stats.course_name.includes("-"))
     );
   };
 
@@ -114,6 +125,23 @@ const CourseInsights: React.FC<CourseInsightsProps> = ({ courseId, token }) => {
       setIsUsingRealData(false);
 
       try {
+        // First, fetch the course details to get the proper name
+        const courseResponse = await fetch(`/api/py/courses`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        let courseName = "";
+        if (courseResponse.ok) {
+          const courses = await courseResponse.json();
+          const course = courses.find((c: any) => c.id === courseId);
+          if (course) {
+            courseName = course.name;
+            console.log(`Found course name: ${courseName} for ID: ${courseId}`);
+          }
+        }
+
         // Fetch course data
         const [assignmentsResponse, statisticsResponse] = await Promise.all([
           fetch(`/api/py/assignments?course_id=${courseId}&limit=10`, {
@@ -149,15 +177,22 @@ const CourseInsights: React.FC<CourseInsightsProps> = ({ courseId, token }) => {
         let stats: CourseStatistics;
         if (statisticsResponse.ok) {
           stats = await statisticsResponse.json();
+          console.log("Received statistics:", stats);
 
           // Check if we got default mock data
           if (isDefaultMockData(stats)) {
             console.log(
               "Detected default mock data, generating course-specific mock data"
             );
-            stats = generateCourseSpecificMockData(courseId);
+            stats = generateCourseSpecificMockData(courseId, courseName);
           } else {
             console.log("Using real course statistics data");
+
+            // Fix course name if it's a number/ID instead of a proper name
+            if (stats.course_name.includes("93420000000") && courseName) {
+              stats.course_name = courseName;
+            }
+
             setIsUsingRealData(true);
           }
 
@@ -166,7 +201,7 @@ const CourseInsights: React.FC<CourseInsightsProps> = ({ courseId, token }) => {
           console.error(
             `Failed to fetch statistics: ${statisticsResponse.status}`
           );
-          stats = generateCourseSpecificMockData(courseId);
+          stats = generateCourseSpecificMockData(courseId, courseName);
           setStatistics(stats);
         }
 
@@ -197,6 +232,23 @@ const CourseInsights: React.FC<CourseInsightsProps> = ({ courseId, token }) => {
     try {
       const generatedInsights: Insight[] = [];
 
+      // Format course name to be more readable
+      const formatCourseName = (name: string) => {
+        // If it's a course ID, just return the course code
+        if (name.includes("93420000000")) {
+          return stats.course_code;
+        }
+
+        // If it's a long name, truncate it for display in insights
+        if (name.length > 30) {
+          return name.substring(0, 30) + "...";
+        }
+
+        return name;
+      };
+
+      const displayName = formatCourseName(stats.course_name);
+
       // Insight 1: Upcoming deadlines
       try {
         const now = new Date();
@@ -213,7 +265,9 @@ const CourseInsights: React.FC<CourseInsightsProps> = ({ courseId, token }) => {
             title: "Upcoming Deadlines",
             description: `You have ${
               upcomingAssignments.length
-            } upcoming assignments. The next one is "${
+            } upcoming assignment${
+              upcomingAssignments.length > 1 ? "s" : ""
+            }. The next one is "${
               upcomingAssignments[0].name
             }" due on ${new Date(
               upcomingAssignments[0].due_at!
@@ -224,7 +278,11 @@ const CourseInsights: React.FC<CourseInsightsProps> = ({ courseId, token }) => {
         } else if (stats.upcoming_assignments > 0) {
           generatedInsights.push({
             title: "Upcoming Deadlines",
-            description: `You have ${stats.upcoming_assignments} upcoming assignments in ${stats.course_name}.`,
+            description: `You have ${
+              stats.upcoming_assignments
+            } upcoming assignment${
+              stats.upcoming_assignments > 1 ? "s" : ""
+            } in ${displayName}.`,
             type: "info",
             icon: "📅",
           });
@@ -239,7 +297,7 @@ const CourseInsights: React.FC<CourseInsightsProps> = ({ courseId, token }) => {
           title: "Course Progress",
           description: `You've completed ${stats.completion_percentage.toFixed(
             1
-          )}% of ${stats.course_name} (${stats.completed_assignments} out of ${
+          )}% of ${displayName} (${stats.completed_assignments} out of ${
             stats.total_assignments
           } assignments).`,
           type: stats.completion_percentage > 75 ? "success" : "info",
@@ -261,9 +319,9 @@ const CourseInsights: React.FC<CourseInsightsProps> = ({ courseId, token }) => {
 
         generatedInsights.push({
           title: "Grade Performance",
-          description: `Your current grade in ${
-            stats.course_name
-          } is ${stats.grade_percentage.toFixed(1)}%. ${
+          description: `Your current grade in ${displayName} is ${stats.grade_percentage.toFixed(
+            1
+          )}%. ${
             gradeType === "success"
               ? "Great job maintaining a high grade!"
               : gradeType === "warning"
@@ -286,9 +344,7 @@ const CourseInsights: React.FC<CourseInsightsProps> = ({ courseId, token }) => {
               stats.past_due_assignments
             } past due assignment${
               stats.past_due_assignments === 1 ? "" : "s"
-            } in ${
-              stats.course_name
-            }. Check if you can still submit them for partial credit.`,
+            } in ${displayName}. Check if you can still submit them for partial credit.`,
             type: "warning",
             icon: "⏰",
           });
@@ -384,11 +440,15 @@ const CourseInsights: React.FC<CourseInsightsProps> = ({ courseId, token }) => {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-semibold text-gray-800">
-        Course Insights{" "}
-        {isUsingRealData && (
-          <span className="text-sm text-green-600 font-normal">
-            (Using real data)
+      <h2 className="text-xl font-semibold text-gray-800 flex items-center">
+        Course Insights
+        {isUsingRealData ? (
+          <span className="ml-2 text-sm text-green-600 font-normal bg-green-50 px-2 py-1 rounded-full">
+            Real Data
+          </span>
+        ) : (
+          <span className="ml-2 text-sm text-amber-600 font-normal bg-amber-50 px-2 py-1 rounded-full">
+            Simulated Data
           </span>
         )}
       </h2>
@@ -404,7 +464,7 @@ const CourseInsights: React.FC<CourseInsightsProps> = ({ courseId, token }) => {
                 : insight.type === "success"
                 ? "bg-green-50 border-green-200"
                 : "bg-purple-50 border-purple-200"
-            }`}
+            } hover:shadow-md transition-shadow duration-200`}
           >
             <div className="flex items-start">
               <div className="text-2xl mr-3">{insight.icon}</div>
