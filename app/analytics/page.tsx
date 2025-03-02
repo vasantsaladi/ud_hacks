@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/app/context/AuthContext";
 import DashboardHeader from "@/app/components/DashboardHeader";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
+import CourseInsights from "@/app/components/CourseInsights";
 
 interface Course {
   id: number;
@@ -164,76 +165,87 @@ export default function Analytics() {
         </div>
 
         {analyticsData ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Assignment Completion Chart */}
-            <div className="bg-white p-6 rounded-lg shadow">
-              <h2 className="text-xl font-semibold mb-4">
-                Assignment Completion Rates
-              </h2>
-              <div className="space-y-4">
-                {analyticsData.assignment_completion.map((item, index) => (
-                  <div key={index}>
-                    <div className="flex justify-between mb-1">
-                      <span className="text-sm font-medium text-gray-700 truncate">
-                        {item.assignment_name}
-                      </span>
-                      <span className="text-sm font-medium text-gray-700">
-                        {Math.round(item.completion_rate * 100)}%
-                      </span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2.5">
-                      <div
-                        className="bg-blue-600 h-2.5 rounded-full"
-                        style={{
-                          width: `${Math.round(item.completion_rate * 100)}%`,
-                        }}
-                      ></div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+          <>
+            {/* Course Insights Section */}
+            <div className="mb-8">
+              <CourseInsights courseId={selectedCourse!} token={token!} />
             </div>
 
-            {/* Grade Distribution */}
-            <div className="bg-white p-6 rounded-lg shadow">
-              <h2 className="text-xl font-semibold mb-4">Grade Distribution</h2>
-              {Object.keys(analyticsData.grade_distribution).length > 0 ? (
-                <div className="space-y-6">
-                  {Object.entries(analyticsData.grade_distribution).map(
-                    ([assignment, grades], index) => (
-                      <div key={index}>
-                        <h3 className="text-md font-medium text-gray-800 mb-2">
-                          {assignment}
-                        </h3>
-                        <div className="grid grid-cols-3 gap-4 text-center">
-                          <div className="bg-green-100 p-3 rounded">
-                            <p className="text-xs text-gray-500">Minimum</p>
-                            <p className="text-lg font-semibold">
-                              {grades.min.toFixed(1)}
-                            </p>
-                          </div>
-                          <div className="bg-blue-100 p-3 rounded">
-                            <p className="text-xs text-gray-500">Average</p>
-                            <p className="text-lg font-semibold">
-                              {grades.avg.toFixed(1)}
-                            </p>
-                          </div>
-                          <div className="bg-purple-100 p-3 rounded">
-                            <p className="text-xs text-gray-500">Maximum</p>
-                            <p className="text-lg font-semibold">
-                              {grades.max.toFixed(1)}
-                            </p>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* Assignment Completion Chart */}
+              <div className="bg-white p-6 rounded-lg shadow">
+                <h2 className="text-xl font-semibold mb-4">
+                  Assignment Completion Rates
+                </h2>
+                <div className="space-y-4">
+                  {analyticsData.assignment_completion.map((item, index) => (
+                    <div key={index}>
+                      <div className="flex justify-between mb-1">
+                        <span className="text-sm font-medium text-gray-700 truncate">
+                          {item.assignment_name}
+                        </span>
+                        <span className="text-sm font-medium text-gray-700">
+                          {Math.round(item.completion_rate * 100)}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2.5">
+                        <div
+                          className="bg-blue-600 h-2.5 rounded-full"
+                          style={{
+                            width: `${Math.round(item.completion_rate * 100)}%`,
+                          }}
+                        ></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Grade Distribution */}
+              <div className="bg-white p-6 rounded-lg shadow">
+                <h2 className="text-xl font-semibold mb-4">
+                  Grade Distribution
+                </h2>
+                {Object.keys(analyticsData.grade_distribution).length > 0 ? (
+                  <div className="space-y-6">
+                    {Object.entries(analyticsData.grade_distribution).map(
+                      ([assignment, grades], index) => (
+                        <div key={index}>
+                          <h3 className="text-md font-medium text-gray-800 mb-2">
+                            {assignment}
+                          </h3>
+                          <div className="grid grid-cols-3 gap-4 text-center">
+                            <div className="bg-green-100 p-3 rounded">
+                              <p className="text-xs text-gray-500">Minimum</p>
+                              <p className="text-lg font-semibold">
+                                {grades.min.toFixed(1)}
+                              </p>
+                            </div>
+                            <div className="bg-blue-100 p-3 rounded">
+                              <p className="text-xs text-gray-500">Average</p>
+                              <p className="text-lg font-semibold">
+                                {grades.avg.toFixed(1)}
+                              </p>
+                            </div>
+                            <div className="bg-purple-100 p-3 rounded">
+                              <p className="text-xs text-gray-500">Maximum</p>
+                              <p className="text-lg font-semibold">
+                                {grades.max.toFixed(1)}
+                              </p>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    )
-                  )}
-                </div>
-              ) : (
-                <p className="text-gray-500 italic">No grade data available</p>
-              )}
+                      )
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-gray-500 italic">
+                    No grade data available
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
+          </>
         ) : (
           <div className="text-center py-12">
             <p className="text-gray-500">Select a course to view analytics</p>

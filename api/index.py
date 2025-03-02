@@ -93,6 +93,22 @@ class UserProfile(BaseModel):
     primary_email: Optional[str] = None
     login_id: Optional[str] = None
 
+class StudyTimeData(BaseModel):
+    day: str
+    hours: float
+    productivity: float
+
+class StudyPattern(BaseModel):
+    most_productive_day: str
+    most_productive_time: str
+    average_session_length: float
+    recommended_session_length: float
+    recommended_break_interval: int
+
+class StudyTimeAnalytics(BaseModel):
+    study_sessions: List[StudyTimeData]
+    study_pattern: StudyPattern
+
 # Helper functions
 async def get_canvas_client():
     """Create an HTTP client with Canvas authorization headers using the API token"""
@@ -105,15 +121,9 @@ def get_canvas_instance(token: str):
     return Canvas(CANVAS_API_BASE_URL, token)
 
 def calculate_priority(assignment: Dict[str, Any]) -> int:
-    """Calculate priority based on due date, points, and other factors using Gemini AI"""
-    # First calculate a basic priority score using the existing algorithm
-    basic_priority = calculate_basic_priority(assignment)
-    
-    # We'll skip the Gemini AI enhancement for now since it's causing asyncio errors
-    # The asyncio.run() call is causing issues when called from within an async context
-    
-    # Just return the basic priority
-    return basic_priority
+    """Calculate priority based on due date, points, and other factors"""
+    # Just use the basic priority calculation to avoid Gemini API issues
+    return calculate_basic_priority(assignment)
 
 def calculate_basic_priority(assignment: Dict[str, Any]) -> int:
     """Calculate basic priority based on due date and points"""
@@ -210,12 +220,13 @@ async def calculate_priority_with_gemini(assignment: Dict[str, Any]) -> Optional
         return None
 
 async def summarize_content(content: str) -> str:
-    """Summarize content using Gemini API"""
+    """Summarize content using Gemini API or fallback to simple summarization"""
     if not content or len(content) < 100:
         return content
     
-    # If quota is exhausted, use a simple fallback summarization
-    if os.getenv("USE_FALLBACK_SUMMARIZATION", "false").lower() == "true":
+    # Use fallback summarization by default to avoid API errors
+    # Only try Gemini if explicitly enabled
+    if os.getenv("USE_GEMINI_SUMMARIZATION", "false").lower() != "true":
         return fallback_summarize(content)
     
     try:
@@ -232,18 +243,12 @@ async def summarize_content(content: str) -> str:
             return response.text
         elif hasattr(response, 'parts') and response.parts:
             return ''.join(part.text for part in response.parts if hasattr(part, 'text'))
-        elif isinstance(response, str):
-            return response
         else:
             print(f"Unexpected response type: {type(response)}")
             # Return a fallback summary if we can't parse the response
             return fallback_summarize(content)
     except Exception as e:
         print(f"Gemini API error in summarization: {e}")
-        # If we get a quota error, set the fallback flag
-        if "429" in str(e) or "exhausted" in str(e).lower():
-            os.environ["USE_FALLBACK_SUMMARIZATION"] = "true"
-            print("Switching to fallback summarization due to quota limits")
         return fallback_summarize(content)  # Always use fallback on any error
 
 def fallback_summarize(content: str) -> str:
@@ -688,3 +693,56 @@ async def get_user_profile(token: str):
     except Exception as e:
         print(f"Error getting user profile: {e}")
         raise HTTPException(status_code=500, detail=f"Error getting user profile: {str(e)}")
+
+@app.get("/api/py/study_time_analytics/{course_id}", response_model=StudyTimeAnalytics)
+async def get_study_time_analytics(course_id: int):
+    """
+    Get study time analytics for a specific course.
+    This endpoint provides data about study patterns and recommendations.
+    """
+    try:
+        # In a real implementation, this would fetch actual data from a database
+        # For demo purposes, we'll generate mock data
+        
+        # Generate mock study session data
+        days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        mock_sessions = []
+        
+        for day in days:
+            # Generate random hours between 1-4
+            hours = 1 + (hash(f"{course_id}-{day}") % 100) / 33  # Deterministic randomness based on course_id
+            # Generate random productivity score between 60-100
+            productivity = 60 + (hash(f"{course_id}-{day}-prod") % 100) / 2.5
+            
+            mock_sessions.append(StudyTimeData(
+                day=day,
+                hours=hours,
+                productivity=productivity
+            ))
+        
+        # Calculate study patterns from the sessions
+        sorted_sessions = sorted(mock_sessions, key=lambda x: x.productivity, reverse=True)
+        most_productive_day = sorted_sessions[0].day
+        
+        # Deterministic time selection based on course_id
+        times = ["Morning", "Afternoon", "Evening"]
+        most_productive_time = times[hash(str(course_id)) % 3]
+        
+        average_session_length = sum(session.hours for session in mock_sessions) / len(mock_sessions)
+        
+        study_pattern = StudyPattern(
+            most_productive_day=most_productive_day,
+            most_productive_time=most_productive_time,
+            average_session_length=average_session_length,
+            recommended_session_length=min(2.5, average_session_length * 1.2),
+            recommended_break_interval=25 + (hash(str(course_id)) % 15)
+        )
+        
+        return StudyTimeAnalytics(
+            study_sessions=mock_sessions,
+            study_pattern=study_pattern
+        )
+        
+    except Exception as e:
+        print(f"Error getting study time analytics: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get study time analytics: {str(e)}")

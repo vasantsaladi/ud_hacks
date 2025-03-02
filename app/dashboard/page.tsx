@@ -7,6 +7,7 @@ import AssignmentCard from "@/app/components/AssignmentCard";
 import DashboardHeader from "@/app/components/DashboardHeader";
 import FilterBar from "@/app/components/FilterBar";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
+import AssignmentRecommendations from "@/app/components/AssignmentRecommendations";
 
 interface Assignment {
   id: number;
@@ -153,6 +154,26 @@ export default function Dashboard() {
       <DashboardHeader />
 
       <main className="container mx-auto px-4 py-8">
+        <h1 className="text-3xl font-bold text-gray-800 mb-6">
+          Assignment Dashboard
+        </h1>
+
+        {/* Assignment Recommendations */}
+        {!selectedCourse && (
+          <div className="mb-8">
+            <AssignmentRecommendations courseId={0} token={token} />
+          </div>
+        )}
+
+        {selectedCourse && (
+          <div className="mb-8">
+            <AssignmentRecommendations
+              courseId={selectedCourse}
+              token={token}
+            />
+          </div>
+        )}
+
         <FilterBar
           courses={courses}
           selectedCourse={selectedCourse}

@@ -7,6 +7,7 @@ import DashboardHeader from "@/app/components/DashboardHeader";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import SmalltalkVisualization from "@/app/components/SmalltalkVisualization";
 import AdvancedSmalltalkVisualization from "@/app/components/AdvancedSmalltalkVisualization";
+import StudyTimeVisualization from "@/app/components/StudyTimeVisualization";
 
 interface Course {
   id: number;
@@ -300,158 +301,40 @@ export default function Statistics() {
             </div>
 
             {/* Assignment Types */}
-            <div className="bg-white p-6 rounded-lg shadow">
-              <h2 className="text-xl font-semibold mb-4">Assignment Types</h2>
-              {Object.keys(statistics.assignments_by_type).length > 0 ? (
-                <>
-                  <div className="space-y-4 mb-8">
-                    {Object.entries(statistics.assignments_by_type).map(
-                      ([type, count], index) => (
-                        <div key={index}>
-                          <div className="flex justify-between mb-1">
-                            <span className="text-sm font-medium text-gray-700 capitalize">
-                              {type}
-                            </span>
-                            <span className="text-sm font-medium text-gray-700">
-                              {count} assignments
-                            </span>
-                          </div>
-                          <div className="w-full bg-gray-200 rounded-full h-2.5">
-                            <div
-                              className="bg-indigo-600 h-2.5 rounded-full"
-                              style={{
-                                width: `${
-                                  (count / statistics.total_assignments) * 100
-                                }%`,
-                              }}
-                            ></div>
-                          </div>
-                        </div>
-                      )
-                    )}
-                  </div>
-
-                  {/* Advanced Smalltalk Visualizations */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-6">
-                    {/* Bar Chart */}
-                    <div>
-                      <h3 className="text-md font-medium text-gray-700 mb-4">
-                        Assignment Types
-                      </h3>
-                      <AdvancedSmalltalkVisualization
-                        title="Assignment Distribution by Type"
-                        chartType="bar"
-                        data={Object.entries(
-                          statistics.assignments_by_type
-                        ).map(([type, count]) => ({
-                          label: type.charAt(0).toUpperCase() + type.slice(1),
-                          value: count,
-                        }))}
-                        height={300}
-                        width={400}
-                        animate={true}
-                      />
-                    </div>
-
-                    {/* Line Chart */}
-                    <div>
-                      <h3 className="text-md font-medium text-gray-700 mb-4">
-                        Assignment Distribution Trend
-                      </h3>
-                      <AdvancedSmalltalkVisualization
-                        title="Assignment Types Distribution"
-                        chartType="line"
-                        data={Object.entries(
-                          statistics.assignments_by_type
-                        ).map(([type, count]) => ({
-                          label: type.charAt(0).toUpperCase() + type.slice(1),
-                          value: count,
-                        }))}
-                        height={300}
-                        width={400}
-                        animate={true}
-                      />
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <p className="text-gray-500 italic">
-                  No assignment type data available
-                </p>
-              )}
-            </div>
-
-            {/* Time Distribution */}
-            <div className="bg-white p-6 rounded-lg shadow">
-              <h2 className="text-xl font-semibold mb-4">
-                Weekly Distribution
-              </h2>
-
-              {/* Original visualization */}
-              <div className="grid grid-cols-7 gap-2 mb-8">
-                {Object.entries(statistics.time_distribution).map(
-                  ([day, count], index) => (
-                    <div key={index} className="text-center">
-                      <div
-                        className="mx-auto mb-2 rounded-md"
-                        style={{
-                          height: `${Math.max(20, count * 15)}px`,
-                          width: "80%",
-                          backgroundColor: count > 0 ? "#4f46e5" : "#e5e7eb",
-                        }}
-                      ></div>
-                      <p className="text-xs font-medium">
-                        {day.substring(0, 3)}
-                      </p>
-                      <p className="text-sm font-bold">{count}</p>
-                    </div>
-                  )
-                )}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div className="bg-white p-6 rounded-lg shadow">
+                <h2 className="text-xl font-semibold mb-4">
+                  Assignments by Type
+                </h2>
+                <SmalltalkVisualization
+                  data={Object.entries(statistics.assignments_by_type).map(
+                    ([key, value]) => ({
+                      label: key,
+                      value,
+                    })
+                  )}
+                  height={300}
+                />
               </div>
 
-              {/* Advanced Smalltalk Visualizations */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-6">
-                {/* Bar Chart */}
-                <div>
-                  <h3 className="text-md font-medium text-gray-700 mb-4">
-                    Bar Chart View
-                  </h3>
-                  <AdvancedSmalltalkVisualization
-                    title="Assignments by Day of Week"
-                    chartType="bar"
-                    data={Object.entries(statistics.time_distribution).map(
-                      ([day, count]) => ({
-                        label: day.substring(0, 3),
-                        value: count,
-                      })
-                    )}
-                    height={300}
-                    width={400}
-                    animate={true}
-                  />
-                </div>
-
-                {/* Radar Chart */}
-                <div>
-                  <h3 className="text-md font-medium text-gray-700 mb-4">
-                    Radar Chart View
-                  </h3>
-                  <AdvancedSmalltalkVisualization
-                    title="Weekly Assignment Distribution"
-                    chartType="radar"
-                    data={Object.entries(statistics.time_distribution).map(
-                      ([day, count]) => ({
-                        label: day.substring(0, 3),
-                        value: count,
-                      })
-                    )}
-                    height={300}
-                    width={400}
-                    animate={true}
-                  />
-                </div>
+              <div className="bg-white p-6 rounded-lg shadow">
+                <h2 className="text-xl font-semibold mb-4">
+                  Time Distribution
+                </h2>
+                <SmalltalkVisualization
+                  data={Object.entries(statistics.time_distribution).map(
+                    ([key, value]) => ({
+                      label: key,
+                      value,
+                    })
+                  )}
+                  height={300}
+                />
               </div>
             </div>
+
+            {/* Study Time Visualization */}
+            <StudyTimeVisualization courseId={selectedCourse!} token={token!} />
           </div>
         ) : (
           <div className="text-center py-12">
